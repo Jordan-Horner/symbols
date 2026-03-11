@@ -416,6 +416,8 @@ func cmdSearch(args []string) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+var version = "0.1.0"
+
 var subcommands = map[string]bool{
 	"list": true, "imports": true, "deps": true,
 	"dependents": true, "impact": true, "graph": true,
@@ -424,8 +426,19 @@ var subcommands = map[string]bool{
 
 func main() {
 	args := os.Args[1:]
+
+	for _, arg := range args {
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("symbols version %s\n", version)
+			os.Exit(0)
+		}
+	}
+
 	if len(args) == 0 {
 		fmt.Println("Usage: syms <command> [options] [args]")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Println("  -v, --version  Print version information and exit")
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("  list         Extract top-level symbols from files")
