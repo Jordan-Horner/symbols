@@ -84,8 +84,9 @@ var tsExtMap = map[string]string{
 // Node types we extract as symbols, per language
 var tsSymbolTypes = map[string]map[string]bool{
 	"python": {
-		"function_definition": true,
-		"class_definition":    true,
+		"function_definition":  true,
+		"class_definition":     true,
+		"expression_statement": true, // module-level assignments
 	},
 	"javascript": {
 		"function_declaration":  true,
@@ -261,6 +262,11 @@ func extractSymbolFromNode(node *tree_sitter.Node, source []byte, langName, node
 		return extractLexicalDecl(node, source, line)
 	}
 
+	// Special handling for Python module-level assignments
+	if nodeType == "expression_statement" {
+		return extractPythonAssignment(node, source, line)
+	}
+
 	// Get the name
 	nameNode := node.ChildByFieldName("name")
 	name := ""
@@ -289,6 +295,33 @@ func extractSymbolFromNode(node *tree_sitter.Node, source []byte, langName, node
 	}
 
 	return Symbol{Name: name, Kind: kind, Line: line}
+}
+
+func extractPythonAssignment(node *tree_sitter.Node, source []byte, line int) Symbol {
+	// Look for assignment child: expression_statement > assignment > identifier
+	childCount := node.ChildCount()
+	for i := uint(0); i < childCount; i++ {
+		child := node.Child(i)
+		if child == nil || child.Kind() != "assignment" {
+			continue
+		}
+		// The left side should be a simple identifier (not attribute or subscript)
+		left := child.ChildByFieldName("left")
+		if left == nil || left.Kind() != "identifier" {
+			return Symbol{}
+		}
+		name := left.Utf8Text(source)
+		// Skip private/dunder names
+		if strings.HasPrefix(name, "_") {
+			return Symbol{}
+		}
+		kind := "variable"
+		if name == strings.ToUpper(name) && len(name) > 1 {
+			kind = "constant"
+		}
+		return Symbol{Name: name, Kind: kind, Line: line}
+	}
+	return Symbol{}
 }
 
 func extractLexicalDecl(node *tree_sitter.Node, source []byte, line int) Symbol {

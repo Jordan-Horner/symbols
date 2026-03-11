@@ -19,7 +19,10 @@ type DepGraph struct {
 
 // NewDepGraph creates an empty dependency graph rooted at the given path.
 func NewDepGraph(root string) *DepGraph {
-	absRoot, _ := filepath.Abs(root)
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		absRoot = root
+	}
 	return &DepGraph{
 		Root:       absRoot,
 		Edges:      make(map[string]map[string]bool),
@@ -53,7 +56,10 @@ func (g *DepGraph) rel(path string) string {
 
 // Deps returns the direct (or transitive) dependencies of a file.
 func (g *DepGraph) Deps(filePath string, transitive bool) []string {
-	target, _ := filepath.Abs(filePath)
+	target, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil
+	}
 	if !transitive {
 		return sortedKeys(g.Edges[target])
 	}
@@ -74,7 +80,10 @@ func (g *DepGraph) Deps(filePath string, transitive bool) []string {
 
 // Dependents returns the direct (or transitive) dependents of a file.
 func (g *DepGraph) Dependents(filePath string, transitive bool) []string {
-	target, _ := filepath.Abs(filePath)
+	target, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil
+	}
 	if !transitive {
 		return sortedKeys(g.Reverse[target])
 	}
@@ -104,7 +113,10 @@ type ImpactResult struct {
 
 // Impact computes impact analysis for a file.
 func (g *DepGraph) Impact(filePath string) ImpactResult {
-	target, _ := filepath.Abs(filePath)
+	target, err := filepath.Abs(filePath)
+	if err != nil {
+		return ImpactResult{File: filePath}
+	}
 	directSet := g.Reverse[target]
 	transitiveList := g.Dependents(filePath, true)
 	transitiveSet := make(map[string]bool)
@@ -268,7 +280,10 @@ func BuildGraph(root string, files []string) *DepGraph {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			absF, _ := filepath.Abs(path)
+			absF, err := filepath.Abs(path)
+			if err != nil {
+				return
+			}
 			ext := strings.ToLower(filepath.Ext(path))
 			data, err := os.ReadFile(path)
 			if err != nil {
@@ -301,7 +316,10 @@ func BuildGraph(root string, files []string) *DepGraph {
 
 // FormatDepsText formats a list of dependencies as human-readable text.
 func FormatDepsText(filePath string, deps []string, root, label string) string {
-	rootAbs, _ := filepath.Abs(root)
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		rootAbs = root
+	}
 	relFile := func(p string) string {
 		r, err := filepath.Rel(rootAbs, p)
 		if err != nil {
@@ -310,7 +328,10 @@ func FormatDepsText(filePath string, deps []string, root, label string) string {
 		return filepath.ToSlash(r)
 	}
 
-	fileAbs, _ := filepath.Abs(filePath)
+	fileAbs, err2 := filepath.Abs(filePath)
+	if err2 != nil {
+		fileAbs = filePath
+	}
 	rf := relFile(fileAbs)
 	if len(deps) == 0 {
 		return fmt.Sprintf("### `%s` — %s: (none)\n", rf, label)

@@ -1,2 +1,4 @@
 # Build output
 symbols
+syms
+dist/

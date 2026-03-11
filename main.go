@@ -34,7 +34,11 @@ func collectFiles(paths []string, recursive bool) []string {
 		if !info.IsDir() {
 			ext := strings.ToLower(filepath.Ext(p))
 			if sourceExts[ext] {
-				abs, _ := filepath.Abs(p)
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: %s: %v\n", p, err)
+					continue
+				}
 				files = append(files, abs)
 			}
 			continue
@@ -42,6 +46,7 @@ func collectFiles(paths []string, recursive bool) []string {
 		if recursive {
 			filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: %s: %v\n", path, err)
 					return nil
 				}
 				if info.IsDir() {
@@ -53,7 +58,11 @@ func collectFiles(paths []string, recursive bool) []string {
 				}
 				ext := strings.ToLower(filepath.Ext(path))
 				if sourceExts[ext] {
-					abs, _ := filepath.Abs(path)
+					abs, err := filepath.Abs(path)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: %s: %v\n", path, err)
+						return nil
+					}
 					files = append(files, abs)
 				}
 				return nil
@@ -69,7 +78,11 @@ func collectFiles(paths []string, recursive bool) []string {
 				}
 				ext := strings.ToLower(filepath.Ext(e.Name()))
 				if sourceExts[ext] {
-					abs, _ := filepath.Abs(filepath.Join(p, e.Name()))
+					abs, err := filepath.Abs(filepath.Join(p, e.Name()))
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: %s: %v\n", e.Name(), err)
+						continue
+					}
 					files = append(files, abs)
 				}
 			}
@@ -80,7 +93,10 @@ func collectFiles(paths []string, recursive bool) []string {
 }
 
 func findProjectRoot(start string) string {
-	abs, _ := filepath.Abs(start)
+	abs, err := filepath.Abs(start)
+	if err != nil {
+		return start
+	}
 	info, err := os.Stat(abs)
 	if err == nil && !info.IsDir() {
 		abs = filepath.Dir(abs)
@@ -147,12 +163,20 @@ func parseFlags(args []string, fs *flag.FlagSet) []string {
 
 func cmdList(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols list - Extract top-level symbols from files")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols list [-r] [--json] [--count] <paths...>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	count := fs.Bool("count", false, "Print symbol count instead of symbols")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--count] <paths...>")
+		fs.Usage()
 		os.Exit(1)
 	}
 
@@ -192,11 +216,19 @@ func cmdList(args []string) {
 
 func cmdImports(args []string) {
 	fs := flag.NewFlagSet("imports", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols imports - Show imports for files")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols imports [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms imports [-r] [--json] <paths...>")
+		fs.Usage()
 		os.Exit(1)
 	}
 
@@ -235,13 +267,21 @@ func buildGraphForFile(target string, root string) (*DepGraph, string) {
 
 func cmdDeps(args []string) {
 	fs := flag.NewFlagSet("deps", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols deps - Show what files a given file depends on")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols deps [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	transitive := fs.Bool("t", false, "Include transitive deps")
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms deps [-t] [--root DIR] [--json] <file>")
+		fs.Usage()
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -266,13 +306,21 @@ func cmdDeps(args []string) {
 
 func cmdDependents(args []string) {
 	fs := flag.NewFlagSet("dependents", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols dependents - What depends on this file?")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols dependents [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	transitive := fs.Bool("t", false, "Include transitive dependents")
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms dependents [-t] [--root DIR] [--json] <file>")
+		fs.Usage()
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -297,12 +345,20 @@ func cmdDependents(args []string) {
 
 func cmdImpact(args []string) {
 	fs := flag.NewFlagSet("impact", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols impact - Impact analysis for a file")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols impact [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms impact [--root DIR] [--json] <file>")
+		fs.Usage()
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -319,6 +375,14 @@ func cmdImpact(args []string) {
 
 func cmdGraph(args []string) {
 	fs := flag.NewFlagSet("graph", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols graph - Project-wide dependency graph summary")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols graph [--root DIR] [--json] [dir]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
@@ -343,17 +407,57 @@ func cmdGraph(args []string) {
 	}
 }
 
+func cmdSearch(args []string) {
+	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	root := fs.String("root", "", "Project root (auto-detected if omitted)")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	positional := parseFlags(args, fs)
+
+	if len(positional) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: syms search [--root DIR] [--json] <query>")
+		os.Exit(1)
+	}
+	query := positional[0]
+
+	searchRoot := *root
+	if searchRoot == "" {
+		searchRoot = findProjectRoot(".")
+	}
+	files := collectFiles([]string{searchRoot}, true)
+	results := SearchSymbols(searchRoot, files, query)
+
+	if *jsonOut {
+		printJSON(results)
+	} else {
+		fmt.Print(FormatSearchText(results, query))
+	}
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
+
+var version = "0.1.0"
 
 var subcommands = map[string]bool{
 	"list": true, "imports": true, "deps": true,
 	"dependents": true, "impact": true, "graph": true,
+	"search": true, "mcp": true,
 }
 
 func main() {
 	args := os.Args[1:]
+
+	for _, arg := range args {
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("symbols version %s\n", version)
+			os.Exit(0)
+		}
+	}
+
 	if len(args) == 0 {
 		fmt.Println("Usage: syms <command> [options] [args]")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Println("  -v, --version  Print version information and exit")
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("  list         Extract top-level symbols from files")
@@ -362,6 +466,9 @@ func main() {
 		fmt.Println("  dependents   What depends on this file?")
 		fmt.Println("  impact       Impact analysis for a file")
 		fmt.Println("  graph        Project-wide dependency graph summary")
+		fmt.Println("  search       Search for symbols by name across a project")
+		fmt.Println("  mcp          Run as MCP server (stdio)")
+
 		os.Exit(1)
 	}
 
@@ -393,6 +500,10 @@ func main() {
 		cmdImpact(rest)
 	case "graph":
 		cmdGraph(rest)
+	case "search":
+		cmdSearch(rest)
+	case "mcp":
+		runMCP()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		os.Exit(1)

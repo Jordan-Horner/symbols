@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Jordan-Horner/symbols",
+  "description": "Fast polyglot source code intelligence: symbols, imports, dependencies, and impact analysis.",
+  "repository": {
+    "url": "https://github.com/Jordan-Horner/symbols",
+    "source": "github"
+  },
+  "version": "1.0.1",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/Jordan-Horner/symbols/releases/download/v1.0.1/syms-mcp_darwin_arm64.tar.gz",
+      "version": "1.0.1",
+      "fileSha256": "b7a21505e1169a95e4eae5081f1339dd8ac14a19c61cd113e4ce6a495e4d79a1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [{"name": "command", "value": "mcp", "isRequired": true}],
+      "environmentVariables": []
+    }
+  ]
+}
