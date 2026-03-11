@@ -163,11 +163,19 @@ func parseFlags(args []string, fs *flag.FlagSet) []string {
 
 func cmdList(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols list - Extract top-level symbols from files")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols list [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] <paths...>")
+		fs.Usage()
 		os.Exit(1)
 	}
 
@@ -189,11 +197,19 @@ func cmdList(args []string) {
 
 func cmdImports(args []string) {
 	fs := flag.NewFlagSet("imports", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols imports - Show imports for files")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols imports [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms imports [-r] [--json] <paths...>")
+		fs.Usage()
 		os.Exit(1)
 	}
 
@@ -232,13 +248,21 @@ func buildGraphForFile(target string, root string) (*DepGraph, string) {
 
 func cmdDeps(args []string) {
 	fs := flag.NewFlagSet("deps", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols deps - Show what files a given file depends on")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols deps [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	transitive := fs.Bool("t", false, "Include transitive deps")
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms deps [-t] [--root DIR] [--json] <file>")
+		fs.Usage()
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -263,13 +287,21 @@ func cmdDeps(args []string) {
 
 func cmdDependents(args []string) {
 	fs := flag.NewFlagSet("dependents", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols dependents - What depends on this file?")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols dependents [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	transitive := fs.Bool("t", false, "Include transitive dependents")
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms dependents [-t] [--root DIR] [--json] <file>")
+		fs.Usage()
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -294,12 +326,20 @@ func cmdDependents(args []string) {
 
 func cmdImpact(args []string) {
 	fs := flag.NewFlagSet("impact", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols impact - Impact analysis for a file")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols impact [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms impact [--root DIR] [--json] <file>")
+		fs.Usage()
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -316,6 +356,14 @@ func cmdImpact(args []string) {
 
 func cmdGraph(args []string) {
 	fs := flag.NewFlagSet("graph", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "symbols graph - Project-wide dependency graph summary")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: symbols graph [--root DIR] [--json] [dir]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	positional := parseFlags(args, fs)
