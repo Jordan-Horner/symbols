@@ -10,6 +10,8 @@ No language server required. No build step for your projects. Just point it at y
 
 ## Table of contents
 
+- [Why this exists](#why-this-exists)
+- [How it saves context](#how-it-saves-context)
 - [What it does](#what-it-does)
 - [Install](#install)
 - [Language support](#language-support)
@@ -27,6 +29,34 @@ No language server required. No build step for your projects. Just point it at y
 - [Project root detection](#project-root-detection)
 - [Limitations](#limitations)
 - [License](#license)
+
+## Why this exists
+
+`symbols` is for the moments when you need to understand a codebase quickly without opening 30 files first.
+
+Common pain points it targets:
+
+- You are about to change a file and need to know blast radius immediately.
+- You are onboarding to an unfamiliar repo and need a map, not a scavenger hunt.
+- You are reviewing a PR and want concrete dependency and ownership signals.
+- You are using AI coding tools and need reliable, structured project context on demand.
+
+Instead of manually reconstructing context from editor tabs, grep output, and memory, `symbols` gives you the structural view in one step.
+
+## How it saves context
+
+`symbols` saves context in two practical ways:
+
+1. It externalizes code structure into fast, repeatable queries (`list`, `deps`, `dependents`, `impact`, `graph`, `search`) so you do not have to rebuild mental maps every session.
+2. It exposes the same model through MCP (`syms mcp`) so agents and tools can fetch fresh project facts directly, rather than relying on stale chat history or guessed file relationships.
+
+Net effect:
+
+- less re-reading
+- fewer "what will this break?" surprises
+- faster onboarding and safer refactors
+- more useful AI assistance because context is retrieved, not improvised
+- lower cost from fewer exploratory engineering cycles and reduced AI token spend on repo re-discovery
 
 ## What it does
 
