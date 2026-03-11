@@ -345,6 +345,7 @@ func cmdGraph(args []string) {
 var subcommands = map[string]bool{
 	"list": true, "imports": true, "deps": true,
 	"dependents": true, "impact": true, "graph": true,
+	"mcp": true,
 }
 
 func main() {
@@ -359,6 +360,8 @@ func main() {
 		fmt.Println("  dependents   What depends on this file?")
 		fmt.Println("  impact       Impact analysis for a file")
 		fmt.Println("  graph        Project-wide dependency graph summary")
+		fmt.Println("  mcp          Run as MCP server (stdio)")
+
 		os.Exit(1)
 	}
 
@@ -390,6 +393,8 @@ func main() {
 		cmdImpact(rest)
 	case "graph":
 		cmdGraph(rest)
+	case "mcp":
+		runMCP()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		os.Exit(1)
