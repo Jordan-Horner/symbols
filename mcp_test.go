@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -226,5 +230,77 @@ func TestErrResult(t *testing.T) {
 	}
 	if r.Content[0].Text != "bad" {
 		t.Errorf("got %q, want 'bad'", r.Content[0].Text)
+	}
+}
+
+func TestReadRPCMessageLineMode(t *testing.T) {
+	input := `{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n"
+	msg, mode, err := readRPCMessage(bufio.NewReader(strings.NewReader(input)))
+	if err != nil {
+		t.Fatalf("readRPCMessage error: %v", err)
+	}
+	if mode != transportLine {
+		t.Fatalf("expected line mode, got %q", mode)
+	}
+	var req jsonRPCRequest
+	if err := json.Unmarshal(msg, &req); err != nil {
+		t.Fatalf("invalid json payload: %v", err)
+	}
+	if req.Method != "ping" {
+		t.Fatalf("expected ping method, got %q", req.Method)
+	}
+}
+
+func TestReadRPCMessageHeaderMode(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	input := "Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body
+	msg, mode, err := readRPCMessage(bufio.NewReader(strings.NewReader(input)))
+	if err != nil {
+		t.Fatalf("readRPCMessage error: %v", err)
+	}
+	if mode != transportHeader {
+		t.Fatalf("expected header mode, got %q", mode)
+	}
+	if string(msg) != body {
+		t.Fatalf("unexpected body: %q", string(msg))
+	}
+}
+
+func TestWriteRPCResponseHeaderMode(t *testing.T) {
+	resp := jsonRPCResponse{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage("1"),
+		Result:  map[string]string{"ok": "yes"},
+	}
+	var out bytes.Buffer
+	if err := writeRPCResponse(&out, transportHeader, resp); err != nil {
+		t.Fatalf("writeRPCResponse error: %v", err)
+	}
+	s := out.String()
+	if !strings.HasPrefix(s, "Content-Length: ") {
+		t.Fatalf("missing content-length header: %q", s)
+	}
+	if !strings.Contains(s, "\r\n\r\n") {
+		t.Fatalf("missing header/body separator: %q", s)
+	}
+}
+
+func TestWriteRPCResponseLineMode(t *testing.T) {
+	resp := jsonRPCResponse{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage("1"),
+		Result:  map[string]string{"ok": "yes"},
+	}
+	var out bytes.Buffer
+	if err := writeRPCResponse(&out, transportLine, resp); err != nil {
+		t.Fatalf("writeRPCResponse error: %v", err)
+	}
+	s := out.String()
+	if !strings.HasSuffix(s, "\n") {
+		t.Fatalf("expected newline-delimited output, got %q", s)
+	}
+	var parsed jsonRPCResponse
+	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &parsed); err != nil {
+		t.Fatalf("line response is not valid json: %v", err)
 	}
 }

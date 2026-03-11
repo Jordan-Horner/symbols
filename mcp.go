@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // ── JSON-RPC types ──────────────────────────────────────────────────────────
@@ -19,16 +22,23 @@ type jsonRPCRequest struct {
 }
 
 type jsonRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
+	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *rpcError   `json:"error,omitempty"`
+	Result  interface{}     `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
 }
 
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
+
+type rpcTransportMode string
+
+const (
+	transportLine   rpcTransportMode = "line"
+	transportHeader rpcTransportMode = "header"
+)
 
 // ── MCP types ───────────────────────────────────────────────────────────────
 
@@ -38,9 +48,9 @@ type mcpServerInfo struct {
 }
 
 type mcpInitResult struct {
-	ProtocolVersion string            `json:"protocolVersion"`
-	Capabilities    mcpCapabilities   `json:"capabilities"`
-	ServerInfo      mcpServerInfo     `json:"serverInfo"`
+	ProtocolVersion string          `json:"protocolVersion"`
+	Capabilities    mcpCapabilities `json:"capabilities"`
+	ServerInfo      mcpServerInfo   `json:"serverInfo"`
 }
 
 type mcpCapabilities struct {
@@ -385,12 +395,77 @@ func jsonResult(v interface{}) mcpToolResult {
 
 // ── Server loop ─────────────────────────────────────────────────────────────
 
-func runMCP() {
-	reader := bufio.NewReader(os.Stdin)
-	encoder := json.NewEncoder(os.Stdout)
-
+func readRPCMessage(reader *bufio.Reader) ([]byte, rpcTransportMode, error) {
 	for {
 		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF && len(line) == 0 {
+				return nil, transportHeader, io.EOF
+			}
+			if err != io.EOF {
+				return nil, transportHeader, err
+			}
+		}
+
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			if err == io.EOF {
+				return nil, transportHeader, io.EOF
+			}
+			continue
+		}
+
+		lower := strings.ToLower(string(trimmed))
+		if strings.HasPrefix(lower, "content-length:") {
+			val := strings.TrimSpace(string(trimmed[len("content-length:"):]))
+			contentLength, parseErr := strconv.Atoi(val)
+			if parseErr != nil || contentLength < 0 {
+				return nil, transportHeader, fmt.Errorf("invalid Content-Length: %q", val)
+			}
+
+			for {
+				hdrLine, hdrErr := reader.ReadBytes('\n')
+				if hdrErr != nil {
+					return nil, transportHeader, hdrErr
+				}
+				if len(bytes.TrimSpace(hdrLine)) == 0 {
+					break
+				}
+			}
+
+			body := make([]byte, contentLength)
+			if _, readErr := io.ReadFull(reader, body); readErr != nil {
+				return nil, transportHeader, readErr
+			}
+			return body, transportHeader, nil
+		}
+
+		return trimmed, transportLine, nil
+	}
+}
+
+func writeRPCResponse(w io.Writer, mode rpcTransportMode, resp jsonRPCResponse) error {
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	if mode == transportLine {
+		_, err = w.Write(append(data, '\n'))
+		return err
+	}
+
+	if _, err := fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(data)); err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}
+
+func runMCP() {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		msg, mode, err := readRPCMessage(reader)
 		if err != nil {
 			if err == io.EOF {
 				return
@@ -400,13 +475,16 @@ func runMCP() {
 		}
 
 		var req jsonRPCRequest
-		if err := json.Unmarshal(line, &req); err != nil {
+		if err := json.Unmarshal(msg, &req); err != nil {
 			resp := jsonRPCResponse{
 				JSONRPC: "2.0",
 				ID:      nil,
 				Error:   &rpcError{Code: -32700, Message: "parse error"},
 			}
-			encoder.Encode(resp)
+			if writeErr := writeRPCResponse(os.Stdout, mode, resp); writeErr != nil {
+				fmt.Fprintf(os.Stderr, "mcp: write error: %v\n", writeErr)
+				return
+			}
 			continue
 		}
 
@@ -450,6 +528,9 @@ func runMCP() {
 			Result:  result,
 			Error:   rpcErr,
 		}
-		encoder.Encode(resp)
+		if writeErr := writeRPCResponse(os.Stdout, mode, resp); writeErr != nil {
+			fmt.Fprintf(os.Stderr, "mcp: write error: %v\n", writeErr)
+			return
+		}
 	}
 }
