@@ -80,8 +80,9 @@ type mcpContent struct {
 }
 
 type mcpToolResult struct {
-	Content []mcpContent `json:"content"`
-	IsError bool         `json:"isError,omitempty"`
+	Content           []mcpContent `json:"content,omitempty"`
+	StructuredContent interface{}  `json:"structuredContent,omitempty"`
+	IsError           bool         `json:"isError,omitempty"`
 }
 
 // ── Tool definitions ────────────────────────────────────────────────────────
@@ -176,7 +177,7 @@ func mcpTools() []mcpTool {
 					},
 					"root": rootProp,
 				},
-				"required": []string{"query", "root"},
+				"required": []string{"query"},
 			},
 		},
 		{
@@ -190,7 +191,6 @@ func mcpTools() []mcpTool {
 						"description": "Project root directory",
 					},
 				},
-				"required": []string{"root"},
 			},
 		},
 	}
@@ -386,11 +386,7 @@ func errResult(text string) mcpToolResult {
 }
 
 func jsonResult(v interface{}) mcpToolResult {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return errResult("json marshal error: " + err.Error())
-	}
-	return mcpToolResult{Content: []mcpContent{{Type: "text", Text: string(data)}}}
+	return mcpToolResult{StructuredContent: v}
 }
 
 // ── Server loop ─────────────────────────────────────────────────────────────
@@ -501,7 +497,7 @@ func runMCP() {
 			result = mcpInitResult{
 				ProtocolVersion: "2025-11-25",
 				Capabilities:    mcpCapabilities{Tools: &mcpToolsCap{}},
-				ServerInfo:      mcpServerInfo{Name: "syms", Version: "1.0.0"},
+				ServerInfo:      mcpServerInfo{Name: "syms", Version: version},
 			}
 
 		case "tools/list":

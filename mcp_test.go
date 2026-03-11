@@ -11,6 +11,20 @@ import (
 	"testing"
 )
 
+func decodeStructured(t *testing.T, result mcpToolResult, out interface{}) {
+	t.Helper()
+	if result.StructuredContent == nil {
+		t.Fatal("expected structuredContent")
+	}
+	data, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("failed to marshal structuredContent: %v", err)
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		t.Fatalf("failed to decode structuredContent: %v", err)
+	}
+}
+
 func TestMCPTools(t *testing.T) {
 	tools := mcpTools()
 	if len(tools) != 7 {
@@ -46,15 +60,12 @@ func TestHandleList(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content[0].Text)
 	}
-	if len(result.Content) == 0 {
-		t.Fatal("empty result")
+	if result.StructuredContent == nil {
+		t.Fatal("missing structuredContent")
 	}
 
-	// Verify JSON is parseable and contains symbols
 	var results []SymbolResult
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &results); err != nil {
-		t.Fatalf("failed to parse result JSON: %v", err)
-	}
+	decodeStructured(t, result, &results)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 file result, got %d", len(results))
 	}
@@ -76,9 +87,7 @@ func TestHandleImports(t *testing.T) {
 	}
 
 	var results []ImportResult
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &results); err != nil {
-		t.Fatalf("failed to parse result JSON: %v", err)
-	}
+	decodeStructured(t, result, &results)
 	if len(results[0].Imports) != 2 {
 		t.Errorf("expected 2 imports, got %d", len(results[0].Imports))
 	}
@@ -102,7 +111,7 @@ func TestHandleDeps(t *testing.T) {
 	}
 
 	var parsed map[string]interface{}
-	json.Unmarshal([]byte(result.Content[0].Text), &parsed)
+	decodeStructured(t, result, &parsed)
 	if parsed["file"] == nil {
 		t.Error("result missing 'file' field")
 	}
@@ -142,9 +151,7 @@ func TestHandleImpact(t *testing.T) {
 	}
 
 	var parsed ImpactResult
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &parsed); err != nil {
-		t.Fatalf("failed to parse: %v", err)
-	}
+	decodeStructured(t, result, &parsed)
 }
 
 func TestHandleGraph(t *testing.T) {
@@ -160,9 +167,7 @@ func TestHandleGraph(t *testing.T) {
 	}
 
 	var parsed GraphSummary
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &parsed); err != nil {
-		t.Fatalf("failed to parse: %v", err)
-	}
+	decodeStructured(t, result, &parsed)
 	if parsed.TotalFiles == 0 {
 		t.Error("expected files in graph")
 	}
@@ -200,7 +205,7 @@ func TestHandleListRecursive(t *testing.T) {
 	}
 
 	var results []SymbolResult
-	json.Unmarshal([]byte(result.Content[0].Text), &results)
+	decodeStructured(t, result, &results)
 	if len(results) != 1 {
 		t.Errorf("expected 1 result, got %d", len(results))
 	}
@@ -221,6 +226,9 @@ func TestTextResult(t *testing.T) {
 	if r.Content[0].Text != "hello" {
 		t.Errorf("got %q, want 'hello'", r.Content[0].Text)
 	}
+	if r.StructuredContent != nil {
+		t.Error("expected no structuredContent for textResult")
+	}
 }
 
 func TestErrResult(t *testing.T) {
@@ -230,6 +238,9 @@ func TestErrResult(t *testing.T) {
 	}
 	if r.Content[0].Text != "bad" {
 		t.Errorf("got %q, want 'bad'", r.Content[0].Text)
+	}
+	if r.StructuredContent != nil {
+		t.Error("expected no structuredContent for errResult")
 	}
 }
 
