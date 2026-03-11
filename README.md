@@ -170,6 +170,12 @@ All commands support `--json` for machine-readable output:
 ```sh
 syms impact --json src/utils.py | jq '.direct_dependents'
 syms graph --json . | jq '.hot_spots[:5]'
+
+# Full edge map (file → its dependencies)
+syms graph --json . | jq '.edges'
+
+# What does a specific file depend on?
+syms graph --json . | jq '.edges["src/app.py"]'
 ```
 
 ### Shorthand
