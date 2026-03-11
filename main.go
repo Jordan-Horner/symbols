@@ -164,9 +164,9 @@ func parseFlags(args []string, fs *flag.FlagSet) []string {
 func cmdList(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "symbols list - Extract top-level symbols from files")
+		fmt.Fprintln(os.Stderr, "syms list - Extract top-level symbols from files")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: symbols list [-r] [--json] [--count] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--count] <paths...>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -217,9 +217,9 @@ func cmdList(args []string) {
 func cmdImports(args []string) {
 	fs := flag.NewFlagSet("imports", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "symbols imports - Show imports for files")
+		fmt.Fprintln(os.Stderr, "syms imports - Show imports for files")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: symbols imports [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms imports [-r] [--json] <paths...>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -268,9 +268,9 @@ func buildGraphForFile(target string, root string) (*DepGraph, string) {
 func cmdDeps(args []string) {
 	fs := flag.NewFlagSet("deps", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "symbols deps - Show what files a given file depends on")
+		fmt.Fprintln(os.Stderr, "syms deps - Show what files a given file depends on")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: symbols deps [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms deps [-t] [--root DIR] [--json] <file>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -307,9 +307,9 @@ func cmdDeps(args []string) {
 func cmdDependents(args []string) {
 	fs := flag.NewFlagSet("dependents", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "symbols dependents - What depends on this file?")
+		fmt.Fprintln(os.Stderr, "syms dependents - What depends on this file?")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: symbols dependents [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms dependents [-t] [--root DIR] [--json] <file>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -346,9 +346,9 @@ func cmdDependents(args []string) {
 func cmdImpact(args []string) {
 	fs := flag.NewFlagSet("impact", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "symbols impact - Impact analysis for a file")
+		fmt.Fprintln(os.Stderr, "syms impact - Impact analysis for a file")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: symbols impact [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms impact [--root DIR] [--json] <file>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -376,9 +376,9 @@ func cmdImpact(args []string) {
 func cmdGraph(args []string) {
 	fs := flag.NewFlagSet("graph", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "symbols graph - Project-wide dependency graph summary")
+		fmt.Fprintln(os.Stderr, "syms graph - Project-wide dependency graph summary")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: symbols graph [--root DIR] [--json] [dir]")
+		fmt.Fprintln(os.Stderr, "Usage: syms graph [--root DIR] [--json] [dir]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -448,7 +448,7 @@ func main() {
 
 	for _, arg := range args {
 		if arg == "--version" || arg == "-v" {
-			fmt.Printf("symbols version %s\n", version)
+			fmt.Printf("syms version %s\n", version)
 			os.Exit(0)
 		}
 	}
