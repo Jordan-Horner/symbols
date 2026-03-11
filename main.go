@@ -149,9 +149,10 @@ func cmdList(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	count := fs.Bool("count", false, "Print symbol count instead of symbols")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--count] <paths...>")
 		os.Exit(1)
 	}
 
@@ -162,11 +163,29 @@ func cmdList(args []string) {
 	}
 
 	results := ExtractSymbolsParallel(files)
-	if *jsonOut {
-		printJSON(results)
+	if *count {
+		if *jsonOut {
+			type CountResult struct {
+				File  string `json:"file"`
+				Count int    `json:"count"`
+			}
+			var counts []CountResult
+			for _, r := range results {
+				counts = append(counts, CountResult{File: r.File, Count: len(r.Symbols)})
+			}
+			printJSON(counts)
+		} else {
+			for _, r := range results {
+				fmt.Printf("%s: %d symbols\n", r.File, len(r.Symbols))
+			}
+		}
 	} else {
-		for _, r := range results {
-			fmt.Println(FormatSymbolResult(r))
+		if *jsonOut {
+			printJSON(results)
+		} else {
+			for _, r := range results {
+				fmt.Println(FormatSymbolResult(r))
+			}
 		}
 	}
 }
