@@ -224,7 +224,15 @@ def format_text(result: dict) -> str:
     return "\n".join(lines)
 
 
-_SKIP_DIRS = {".git", "node_modules", "__pycache__", "dist", "build", ".venv", "venv", ".tox", ".mypy_cache"}
+_SKIP_DIRS = {
+    ".git", "node_modules", "__pycache__", "dist", "build",
+    ".venv", "venv", ".tox", ".mypy_cache", ".next", ".nuxt",
+    "storybook-static", "coverage", ".turbo", ".parcel-cache",
+    "target",  # Rust/Java build output
+    "vendor",  # Go/PHP vendor deps
+    "Pods",    # iOS
+    ".gradle", "bin", "obj",  # C#/Java build
+}
 
 
 def collect_files(paths: list[str], recursive: bool) -> list[str]:
@@ -235,13 +243,22 @@ def collect_files(paths: list[str], recursive: bool) -> list[str]:
             if path.suffix.lower() in _SUPPORTED_EXTS:
                 files.append(str(path.resolve()))
         elif path.is_dir():
-            iterator = path.rglob("*") if recursive else path.iterdir()
-            for f in sorted(iterator):
-                if f.is_file() and f.suffix.lower() in _SUPPORTED_EXTS:
-                    parts = f.relative_to(path).parts
-                    if any(part.startswith(".") or part in _SKIP_DIRS for part in parts):
-                        continue
-                    files.append(str(f.resolve()))
+            if recursive:
+                # Use os.walk for directory pruning (rglob walks .git etc.)
+                for dirpath, dirnames, filenames in os.walk(path):
+                    # Prune skip dirs in-place to prevent descent
+                    dirnames[:] = [
+                        d for d in dirnames
+                        if d not in _SKIP_DIRS and not d.startswith(".")
+                    ]
+                    dirnames.sort()
+                    for fname in sorted(filenames):
+                        if Path(fname).suffix.lower() in _SUPPORTED_EXTS:
+                            files.append(str(Path(dirpath, fname).resolve()))
+            else:
+                for f in sorted(path.iterdir()):
+                    if f.is_file() and f.suffix.lower() in _SUPPORTED_EXTS:
+                        files.append(str(f.resolve()))
         else:
             print(f"warning: {p} not found", file=sys.stderr)
     return files
