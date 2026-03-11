@@ -10,7 +10,6 @@ Rust, C#, PHP.
 
 from __future__ import annotations
 
-import ast
 import re
 from collections import defaultdict, deque
 from pathlib import Path
@@ -18,33 +17,51 @@ from typing import Optional
 
 # ── Import extraction ─────────────────────────────────────────────────────────
 
-# Python: use ast for reliable import parsing
+# Python: regex-based import parsing (avoids ast.parse which is ~45ms/file)
+_PY_IMPORT_RE = re.compile(
+    r'''^\s*import\s+([A-Za-z_][\w.]*(?:\s*,\s*[A-Za-z_][\w.]*)*)''',
+    re.MULTILINE,
+)
+_PY_FROM_IMPORT_RE = re.compile(
+    r'''^\s*from\s+(\.{0,3}[A-Za-z_]?[\w.]*)\s+import\s+(.+)''',
+    re.MULTILINE,
+)
+
+
 def _extract_imports_python(content: str) -> list[dict]:
-    """Extract imports from Python source."""
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return []
+    """Extract imports from Python source using regex."""
     imports: list[dict] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.append({
-                    "module": alias.name,
-                    "names": [alias.asname or alias.name],
-                    "line": node.lineno,
-                    "kind": "import",
-                })
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            level = node.level or 0
-            prefix = "." * level
-            imports.append({
-                "module": prefix + module,
-                "names": [a.name for a in (node.names or [])],
-                "line": node.lineno,
-                "kind": "from",
-            })
+    seen: set[tuple[str, int]] = set()
+
+    for m in _PY_IMPORT_RE.finditer(content):
+        line = content[:m.start()].count("\n") + 1
+        # Skip "import" inside "from X import Y" (already captured below)
+        prefix = content[:m.start()].rstrip()
+        if prefix.endswith("from"):
+            continue
+        for module in m.group(1).split(","):
+            module = module.strip().split(" as ")[0].strip()
+            if module and (module, line) not in seen:
+                seen.add((module, line))
+                imports.append({"module": module, "kind": "import", "line": line})
+
+    for m in _PY_FROM_IMPORT_RE.finditer(content):
+        line = content[:m.start()].count("\n") + 1
+        module = m.group(1).strip()
+        names_str = m.group(2).strip().rstrip("\\")
+        # Handle multi-line imports with parens
+        if "(" in names_str and ")" not in names_str:
+            # Find closing paren
+            rest_start = m.end()
+            paren_end = content.find(")", rest_start)
+            if paren_end != -1:
+                names_str = names_str + content[rest_start:paren_end]
+        names_str = names_str.strip("() \t")
+        names = [n.strip().split(" as ")[0].strip() for n in names_str.split(",") if n.strip()]
+        if module and (module, line) not in seen:
+            seen.add((module, line))
+            imports.append({"module": module, "names": names, "kind": "from", "line": line})
+
     return imports
 
 
@@ -259,15 +276,20 @@ _register_extractor([".cs"], _extract_imports_csharp)
 _register_extractor([".php"], _extract_imports_php)
 
 
-def extract_imports(file_path: str) -> dict:
-    """Extract imports from a single file."""
+def extract_imports(file_path: str, content: str | None = None) -> dict:
+    """Extract imports from a single file.
+
+    If *content* is provided, skips the file read (used by build_graph to
+    avoid double-reading).
+    """
     path = Path(file_path)
     ext = path.suffix.lower()
 
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    except OSError as e:
-        return {"file": str(path), "error": str(e), "imports": []}
+    if content is None:
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            return {"file": str(path), "error": str(e), "imports": []}
 
     extractor = _IMPORT_EXTRACTORS.get(ext)
     if extractor:
@@ -799,23 +821,37 @@ class DepGraph:
         }
 
 
+def _read_and_extract(f: str) -> tuple[str, str, dict]:
+    """Read a file and extract its imports in one pass."""
+    abs_f = str(Path(f).resolve())
+    ext = Path(f).suffix.lower()
+    try:
+        content = Path(f).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return abs_f, ext, {"imports": []}
+    result = extract_imports(f, content=content)
+    return abs_f, ext, result
+
+
 def build_graph(root: str, files: list[str]) -> DepGraph:
     """Build a dependency graph from a list of source files."""
+    from concurrent.futures import ThreadPoolExecutor
+
     index = ProjectIndex(root, files)
     graph = DepGraph(root)
 
-    for f in files:
-        abs_f = str(Path(f).resolve())
-        result = extract_imports(f)
-        ext = Path(f).suffix.lower()
+    # Read + extract imports in parallel (I/O bound)
+    with ThreadPoolExecutor() as pool:
+        results = list(pool.map(_read_and_extract, files))
 
+    for abs_f, ext, result in results:
         for imp in result.get("imports", []):
             module = imp.get("module", "")
             if not module:
                 continue
 
             kind = imp.get("kind", "")
-            resolved = _resolve_import(index, ext, module, kind, f)
+            resolved = _resolve_import(index, ext, module, kind, abs_f)
 
             if resolved:
                 graph.add_edge(abs_f, resolved)
