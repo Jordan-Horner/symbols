@@ -51,8 +51,8 @@ Symbol extraction uses tree-sitter for full AST parsing (function signatures wit
 | Language | Symbols | Import parsing | Dependency resolution |
 |---|---|---|---|
 | Python | tree-sitter (functions, classes, constants, variables) | regex | Relative + absolute imports |
-| TypeScript | tree-sitter | regex | Relative paths, `$lib`/`@` aliases, `index.ts` |
-| JavaScript | tree-sitter | regex | Same as TypeScript |
+| TypeScript | tree-sitter | regex | `tsconfig.json` path aliases, relative paths, `index.ts` |
+| JavaScript | tree-sitter | regex | Same as TypeScript (also reads `jsconfig.json`) |
 | Svelte | tree-sitter (script block) | regex | Same as TypeScript |
 | Go | tree-sitter | regex | `go.mod` module prefix, package directories |
 | Java | tree-sitter | regex | Dot-to-slash, `src/main/java` prefix |
@@ -238,7 +238,7 @@ syms deps src/app.py --root /path/to/project
 
 ## Limitations
 
-- **Convention-based resolution** — dependency resolution uses file path conventions, not compiler/build system integration. Complex path aliases (e.g. TypeScript `paths` in `tsconfig.json`, webpack aliases) are not resolved.
+- **Convention-based resolution** — dependency resolution uses file path conventions, not compiler/build system integration. TypeScript/JavaScript `paths` from `tsconfig.json`/`jsconfig.json` are supported (including `extends`), but webpack/vite aliases defined outside tsconfig are not.
 - **File-level granularity** — dependencies are traced at the file level (import graph), not at the function or symbol level. There is no call graph.
 - **C/C++ includes** — `#include` parsing and header resolution are not yet implemented. Symbol extraction works, but dependency tracing does not.
 - **Ruby/Scala/Bash** — symbol extraction works via tree-sitter, but import parsing and dependency resolution are not implemented.

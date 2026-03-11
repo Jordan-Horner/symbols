@@ -217,6 +217,164 @@ func TestResolvePHPRequire(t *testing.T) {
 	}
 }
 
+func TestResolveTSConfigPaths(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create tsconfig.json with path aliases
+	tsconfig := `{
+		"compilerOptions": {
+			"baseUrl": ".",
+			"paths": {
+				"@/*": ["./src/*"],
+				"@components/*": ["./src/components/*"],
+				"~utils/*": ["./src/utils/*"]
+			}
+		}
+	}`
+	os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte(tsconfig), 0644)
+
+	// Create source files
+	files := map[string]string{
+		"src/app.ts":                "",
+		"src/components/Button.tsx": "",
+		"src/components/index.ts":  "",
+		"src/utils/format.ts":      "",
+		"src/pages/Home.tsx":       "",
+	}
+	var paths []string
+	for name, content := range files {
+		p := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(p), 0755)
+		os.WriteFile(p, []byte(content), 0644)
+		paths = append(paths, p)
+	}
+
+	idx := NewProjectIndex(dir, paths)
+	from := filepath.Join(dir, "src/pages/Home.tsx")
+
+	tests := []struct {
+		specifier string
+		wantFile  string
+	}{
+		{"@/app", "src/app.ts"},
+		{"@/components/Button", "src/components/Button.tsx"},
+		{"@components/Button", "src/components/Button.tsx"},
+		{"@/components", "src/components/index.ts"},
+		{"~utils/format", "src/utils/format.ts"},
+	}
+
+	for _, tt := range tests {
+		result := idx.ResolveTS(tt.specifier, from)
+		want := filepath.Join(dir, tt.wantFile)
+		if result != want {
+			t.Errorf("ResolveTS(%q) = %q, want %q", tt.specifier, result, want)
+		}
+	}
+}
+
+func TestResolveTSConfigBaseUrl(t *testing.T) {
+	dir := t.TempDir()
+
+	tsconfig := `{
+		"compilerOptions": {
+			"baseUrl": "src",
+			"paths": {
+				"@/*": ["./*"]
+			}
+		}
+	}`
+	os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte(tsconfig), 0644)
+
+	p := filepath.Join(dir, "src", "lib", "api.ts")
+	os.MkdirAll(filepath.Dir(p), 0755)
+	os.WriteFile(p, []byte(""), 0644)
+
+	idx := NewProjectIndex(dir, []string{p})
+	result := idx.ResolveTS("@/lib/api", filepath.Join(dir, "src", "app.ts"))
+	if result != p {
+		t.Errorf("got %q, want %q", result, p)
+	}
+}
+
+func TestResolveTSConfigExtends(t *testing.T) {
+	dir := t.TempDir()
+
+	base := `{
+		"compilerOptions": {
+			"baseUrl": ".",
+			"paths": {
+				"@/*": ["./src/*"]
+			}
+		}
+	}`
+	os.WriteFile(filepath.Join(dir, "tsconfig.base.json"), []byte(base), 0644)
+
+	child := `{
+		"extends": "./tsconfig.base.json",
+		"compilerOptions": {
+			"paths": {
+				"@lib/*": ["./lib/*"]
+			}
+		}
+	}`
+	os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte(child), 0644)
+
+	srcFile := filepath.Join(dir, "src", "app.ts")
+	libFile := filepath.Join(dir, "lib", "helpers.ts")
+	os.MkdirAll(filepath.Dir(srcFile), 0755)
+	os.MkdirAll(filepath.Dir(libFile), 0755)
+	os.WriteFile(srcFile, []byte(""), 0644)
+	os.WriteFile(libFile, []byte(""), 0644)
+
+	idx := NewProjectIndex(dir, []string{srcFile, libFile})
+	from := filepath.Join(dir, "index.ts")
+
+	// Parent alias should work
+	result := idx.ResolveTS("@/app", from)
+	if result != srcFile {
+		t.Errorf("parent alias: got %q, want %q", result, srcFile)
+	}
+
+	// Child alias should work
+	result = idx.ResolveTS("@lib/helpers", from)
+	if result != libFile {
+		t.Errorf("child alias: got %q, want %q", result, libFile)
+	}
+}
+
+func TestResolveTSConfigNoFile(t *testing.T) {
+	dir := t.TempDir()
+	// No tsconfig.json — should not crash
+	idx := NewProjectIndex(dir, nil)
+	if len(idx.tsAliases) != 0 {
+		t.Errorf("expected no aliases without tsconfig, got %d", len(idx.tsAliases))
+	}
+}
+
+func TestResolveTSConfigJsconfig(t *testing.T) {
+	dir := t.TempDir()
+
+	jsconfig := `{
+		"compilerOptions": {
+			"baseUrl": ".",
+			"paths": {
+				"@/*": ["./src/*"]
+			}
+		}
+	}`
+	os.WriteFile(filepath.Join(dir, "jsconfig.json"), []byte(jsconfig), 0644)
+
+	p := filepath.Join(dir, "src", "app.js")
+	os.MkdirAll(filepath.Dir(p), 0755)
+	os.WriteFile(p, []byte(""), 0644)
+
+	idx := NewProjectIndex(dir, []string{p})
+	result := idx.ResolveTS("@/app", filepath.Join(dir, "index.js"))
+	if result != p {
+		t.Errorf("jsconfig: got %q, want %q", result, p)
+	}
+}
+
 func TestResolveImportDispatch(t *testing.T) {
 	dir := t.TempDir()
 	idx := NewProjectIndex(dir, nil)

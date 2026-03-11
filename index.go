@@ -1,20 +1,28 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
+// tsPathAlias maps a prefix like "@/" to a list of absolute directory paths.
+type tsPathAlias struct {
+	prefix string   // e.g. "@/" (the part before the wildcard)
+	dirs   []string // absolute directories to search
+}
+
 // ProjectIndex indexes all source files in a project for import resolution.
 type ProjectIndex struct {
-	Root        string
-	GoModule    string
-	byModule    map[string]string   // "engine.routing" → abs path
-	bySlash     map[string]string   // "engine/routing" → abs path
-	byStem      map[string][]string // "routing" → [abs paths]
-	byRelPath   map[string]string   // "engine/routing.py" → abs path
-	allFiles    map[string]bool
+	Root          string
+	GoModule      string
+	tsAliases     []tsPathAlias       // tsconfig.json path aliases
+	byModule      map[string]string   // "engine.routing" → abs path
+	bySlash       map[string]string   // "engine/routing" → abs path
+	byStem        map[string][]string // "routing" → [abs paths]
+	byRelPath     map[string]string   // "engine/routing.py" → abs path
+	allFiles      map[string]bool
 }
 
 var sourceExts = map[string]bool{
@@ -51,6 +59,9 @@ func NewProjectIndex(root string, files []string) *ProjectIndex {
 			}
 		}
 	}
+
+	// Read tsconfig.json / jsconfig.json for path aliases
+	idx.tsAliases = loadTSPathAliases(absRoot)
 
 	for _, f := range files {
 		absF, err := filepath.Abs(f)
@@ -124,6 +135,116 @@ func NewProjectIndex(root string, files []string) *ProjectIndex {
 	return idx
 }
 
+// ── tsconfig.json path aliases ──────────────────────────────────────────────
+
+// loadTSPathAliases reads tsconfig.json (or jsconfig.json) and extracts
+// compilerOptions.paths entries. Supports "extends" for inherited configs.
+func loadTSPathAliases(root string) []tsPathAlias {
+	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
+		aliases := parseTSConfig(root, filepath.Join(root, name))
+		if len(aliases) > 0 {
+			return aliases
+		}
+	}
+	return nil
+}
+
+func parseTSConfig(root, configPath string) []tsPathAlias {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil
+	}
+
+	var config struct {
+		Extends         string `json:"extends"`
+		CompilerOptions struct {
+			BaseURL string              `json:"baseUrl"`
+			Paths   map[string][]string `json:"paths"`
+		} `json:"compilerOptions"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil
+	}
+
+	// Handle "extends" — merge parent config first
+	var aliases []tsPathAlias
+	if config.Extends != "" {
+		parentPath := config.Extends
+		if !filepath.IsAbs(parentPath) {
+			parentPath = filepath.Join(filepath.Dir(configPath), parentPath)
+		}
+		// Add .json if missing
+		if filepath.Ext(parentPath) == "" {
+			parentPath += ".json"
+		}
+		aliases = parseTSConfig(root, parentPath)
+	}
+
+	if len(config.CompilerOptions.Paths) == 0 {
+		return aliases
+	}
+
+	// Resolve baseUrl relative to the config file's directory
+	baseDir := filepath.Dir(configPath)
+	if config.CompilerOptions.BaseURL != "" {
+		baseDir = filepath.Join(filepath.Dir(configPath), config.CompilerOptions.BaseURL)
+	}
+
+	for pattern, targets := range config.CompilerOptions.Paths {
+		// Pattern is like "@/*" or "@components/*" or "utils"
+		prefix := strings.TrimSuffix(pattern, "*")
+
+		var dirs []string
+		for _, target := range targets {
+			// Target is like "./src/*" or "src/components/*"
+			dir := strings.TrimSuffix(target, "*")
+			dir = strings.TrimSuffix(dir, "/")
+			absDir := filepath.Join(baseDir, dir)
+			absDir, err := filepath.Abs(absDir)
+			if err != nil {
+				continue
+			}
+			dirs = append(dirs, absDir)
+		}
+		if len(dirs) > 0 {
+			aliases = append(aliases, tsPathAlias{prefix: prefix, dirs: dirs})
+		}
+	}
+
+	return aliases
+}
+
+// resolveTSAlias tries to resolve a specifier using tsconfig path aliases.
+func (idx *ProjectIndex) resolveTSAlias(specifier string) string {
+	for _, alias := range idx.tsAliases {
+		if !strings.HasPrefix(specifier, alias.prefix) {
+			continue
+		}
+		remainder := specifier[len(alias.prefix):]
+		for _, dir := range alias.dirs {
+			target := filepath.Join(dir, remainder)
+
+			// Try exact match
+			if idx.allFiles[target] {
+				return target
+			}
+			// Try with extensions
+			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".svelte"} {
+				if idx.allFiles[target+ext] {
+					return target + ext
+				}
+			}
+			// Try index files
+			for _, idx2 := range []string{"/index.ts", "/index.tsx", "/index.js"} {
+				if idx.allFiles[target+idx2] {
+					return target + idx2
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // ── Python resolver ─────────────────────────────────────────────────────────
 
 func (idx *ProjectIndex) ResolvePython(module, fromFile string) string {
@@ -176,10 +297,14 @@ func (idx *ProjectIndex) ResolvePython(module, fromFile string) string {
 
 func (idx *ProjectIndex) ResolveTS(specifier, fromFile string) string {
 	if !strings.HasPrefix(specifier, ".") && !strings.HasPrefix(specifier, "/") {
-		// Alias like $lib/foo or @app/foo
+		// Try tsconfig path aliases first
+		if resolved := idx.resolveTSAlias(specifier); resolved != "" {
+			return resolved
+		}
+
+		// Fallback: naive alias like $lib/foo or @app/foo
 		cleaned := specifier
 		if len(specifier) > 0 && (specifier[0] == '$' || specifier[0] == '@') {
-			// Strip the first path segment: $lib/foo → foo, @app/bar → bar
 			if idx2 := strings.Index(specifier, "/"); idx2 >= 0 {
 				cleaned = specifier[idx2+1:]
 			} else {
