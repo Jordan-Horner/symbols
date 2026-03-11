@@ -6,13 +6,13 @@
     "url": "https://github.com/Jordan-Horner/symbols",
     "source": "github"
   },
-  "version": "1.0.1",
+  "version": "1.0.2",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/Jordan-Horner/symbols/releases/download/v1.0.1/syms-mcp_darwin_arm64.tar.gz",
-      "version": "1.0.1",
-      "fileSha256": "b7a21505e1169a95e4eae5081f1339dd8ac14a19c61cd113e4ce6a495e4d79a1",
+      "identifier": "https://github.com/Jordan-Horner/symbols/releases/download/v1.0.2/syms_darwin_arm64.tar.gz",
+      "version": "1.0.2",
+      "fileSha256": "ed79cfcaaddbd0ca8e29811ed1dc5336bcb7d8f76102e30888c1cbdce8fe5229",
       "transport": {
         "type": "stdio"
       },
