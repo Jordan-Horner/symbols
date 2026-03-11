@@ -450,7 +450,7 @@ func cmdSearch(args []string) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-var version = "0.1.0"
+var version = "1.0.2"
 
 var subcommands = map[string]bool{
 	"list": true, "imports": true, "deps": true,
