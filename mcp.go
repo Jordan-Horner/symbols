@@ -111,6 +111,11 @@ func mcpTools() []mcpTool {
 				"properties": map[string]interface{}{
 					"paths":     pathsProp,
 					"recursive": map[string]interface{}{"type": "boolean", "description": "Scan directories recursively"},
+					"kinds": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Optional symbol kind filter (e.g. class, function, constant)",
+					},
 				},
 				"required": []string{"paths"},
 			},
@@ -176,6 +181,11 @@ func mcpTools() []mcpTool {
 						"description": "Symbol name to search for",
 					},
 					"root": rootProp,
+					"kinds": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Optional symbol kind filter",
+					},
 				},
 				"required": []string{"query"},
 			},
@@ -226,6 +236,7 @@ func handleList(args json.RawMessage) mcpToolResult {
 	var p struct {
 		Paths     []string `json:"paths"`
 		Recursive bool     `json:"recursive"`
+		Kinds     []string `json:"kinds"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return errResult("invalid arguments: " + err.Error())
@@ -235,7 +246,7 @@ func handleList(args json.RawMessage) mcpToolResult {
 	if len(files) == 0 {
 		return textResult("No supported files found.")
 	}
-	results := ExtractSymbolsParallel(files)
+	results := filterSymbolResultsByKind(ExtractSymbolsParallel(files), p.Kinds)
 	return jsonResult(results)
 }
 
@@ -326,8 +337,9 @@ func handleImpact(args json.RawMessage) mcpToolResult {
 
 func handleSearch(args json.RawMessage) mcpToolResult {
 	var p struct {
-		Query string `json:"query"`
-		Root  string `json:"root"`
+		Query string   `json:"query"`
+		Root  string   `json:"root"`
+		Kinds []string `json:"kinds"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return errResult("invalid arguments: " + err.Error())
@@ -341,7 +353,7 @@ func handleSearch(args json.RawMessage) mcpToolResult {
 		return errResult("invalid root: " + err.Error())
 	}
 	files := collectFiles([]string{absRoot}, true)
-	results := SearchSymbols(absRoot, files, p.Query)
+	results := SearchSymbolsWithKinds(absRoot, files, p.Query, p.Kinds)
 	return jsonResult(results)
 }
 

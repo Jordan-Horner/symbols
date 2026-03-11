@@ -16,8 +16,14 @@ type SearchResult struct {
 // SearchSymbols searches for symbols matching a query across all files.
 // Matches are ranked: exact > prefix > contains (case-insensitive).
 func SearchSymbols(root string, files []string, query string) []SearchResult {
+	return SearchSymbolsWithKinds(root, files, query, nil)
+}
+
+// SearchSymbolsWithKinds searches for symbols and optionally filters by symbol kind.
+func SearchSymbolsWithKinds(root string, files []string, query string, kinds []string) []SearchResult {
 	results := ExtractSymbolsParallel(files)
 	queryLower := strings.ToLower(query)
+	kindSet := buildKindSet(kinds)
 
 	var exact, prefix, contains []SearchResult
 
@@ -36,6 +42,10 @@ func SearchSymbols(root string, files []string, query string) []SearchResult {
 		}
 
 		for _, sym := range r.Symbols {
+			if len(kindSet) > 0 && !kindSet[normalizeKind(sym.Kind)] {
+				continue
+			}
+
 			// Strip params from name for matching (e.g. "foo(bar, baz)" → "foo")
 			name := sym.Name
 			if idx := strings.Index(name, "("); idx >= 0 {

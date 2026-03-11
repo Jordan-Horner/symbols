@@ -276,6 +276,49 @@ func ExtractSymbolsParallel(files []string) []SymbolResult {
 	return results
 }
 
+func normalizeKind(kind string) string {
+	return strings.ToLower(strings.TrimSpace(kind))
+}
+
+func buildKindSet(kinds []string) map[string]bool {
+	set := make(map[string]bool)
+	for _, raw := range kinds {
+		for _, part := range strings.Split(raw, ",") {
+			k := normalizeKind(part)
+			if k != "" {
+				set[k] = true
+			}
+		}
+	}
+	return set
+}
+
+func filterSymbolsByKind(symbols []Symbol, kindSet map[string]bool) []Symbol {
+	if len(kindSet) == 0 {
+		return symbols
+	}
+	filtered := make([]Symbol, 0, len(symbols))
+	for _, s := range symbols {
+		if kindSet[normalizeKind(s.Kind)] {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
+}
+
+func filterSymbolResultsByKind(results []SymbolResult, kinds []string) []SymbolResult {
+	kindSet := buildKindSet(kinds)
+	if len(kindSet) == 0 {
+		return results
+	}
+	filtered := make([]SymbolResult, len(results))
+	for i, r := range results {
+		filtered[i] = r
+		filtered[i].Symbols = filterSymbolsByKind(r.Symbols, kindSet)
+	}
+	return filtered
+}
+
 // FormatSymbolResult formats a single result as human-readable text.
 func FormatSymbolResult(r SymbolResult) string {
 	var b strings.Builder

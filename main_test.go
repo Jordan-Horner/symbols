@@ -68,6 +68,22 @@ func TestParseFlagsEqualsSyntax(t *testing.T) {
 	}
 }
 
+func TestParseFlagsRepeatedFilter(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	var filters stringListFlag
+	fs.Var(&filters, "filter", "")
+
+	args := []string{"--filter", "class", "--filter", "function", "file.py"}
+	positional := parseFlags(args, fs)
+
+	if len(filters) != 2 || filters[0] != "class" || filters[1] != "function" {
+		t.Errorf("filters = %v, want [class function]", filters)
+	}
+	if len(positional) != 1 || positional[0] != "file.py" {
+		t.Errorf("positional = %v, want [file.py]", positional)
+	}
+}
+
 func TestCollectFilesSingle(t *testing.T) {
 	dir := t.TempDir()
 	pyFile := filepath.Join(dir, "test.py")

@@ -11,9 +11,9 @@ func setupSearchProject(t *testing.T) (string, []string) {
 	dir := t.TempDir()
 
 	files := map[string]string{
-		"app.py":      "def handle_request(): pass\nclass RequestHandler: pass\nAPI_URL = 'http://'\n",
-		"utils.py":    "def format_date(): pass\ndef handle_error(): pass\n",
-		"models.py":   "class User: pass\nclass UserProfile: pass\n",
+		"app.py":       "def handle_request(): pass\nclass RequestHandler: pass\nAPI_URL = 'http://'\n",
+		"utils.py":     "def format_date(): pass\ndef handle_error(): pass\n",
+		"models.py":    "class User: pass\nclass UserProfile: pass\n",
 		"src/index.ts": "export function handleClick() {}\nexport function handleSubmit() {}\n",
 	}
 	var paths []string
@@ -129,6 +129,19 @@ func TestSearchRelativePaths(t *testing.T) {
 	for _, r := range results {
 		if filepath.IsAbs(r.File) {
 			t.Errorf("expected relative path, got %q", r.File)
+		}
+	}
+}
+
+func TestSearchWithKindFilter(t *testing.T) {
+	dir, files := setupSearchProject(t)
+	results := SearchSymbolsWithKinds(dir, files, "User", []string{"class"})
+	if len(results) == 0 {
+		t.Fatal("expected class results")
+	}
+	for _, r := range results {
+		if r.Symbol.Kind != "class" {
+			t.Fatalf("expected only class results, got kind %q", r.Symbol.Kind)
 		}
 	}
 }

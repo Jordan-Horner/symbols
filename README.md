@@ -89,6 +89,11 @@ syms list -r src/
 
 # JSON output (for piping to other tools)
 syms list --json app.py
+
+# Filter by symbol kind (repeatable or comma-separated)
+syms list --filter class src/
+syms list --filter class,function src/
+syms list --filter class --filter function src/
 ```
 
 **Output:**
@@ -231,6 +236,9 @@ syms search --json handle
 
 # Search in a specific project
 syms search --root /path/to/project Config
+
+# Search only specific symbol kinds
+syms search --filter class User
 ```
 
 **Output:**
@@ -262,6 +270,8 @@ Exposes all functionality as structured MCP tools over stdio (JSON-RPC 2.0):
 | `syms_impact` | Impact analysis |
 | `syms_search` | Search symbols by name |
 | `syms_graph` | Project dependency graph |
+
+`syms_list` and `syms_search` accept optional `kinds: string[]` arguments to filter symbol kinds.
 
 **Claude Code configuration** (`~/.claude.json`):
 

@@ -211,6 +211,59 @@ func TestHandleListRecursive(t *testing.T) {
 	}
 }
 
+func TestHandleListKindFilter(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "test.py")
+	os.WriteFile(f, []byte("class User: pass\nAPI_URL = 'x'\n"), 0644)
+
+	args, _ := json.Marshal(map[string]interface{}{
+		"paths": []string{f},
+		"kinds": []string{"class"},
+	})
+	result := handleToolCall("syms_list", args)
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	var results []SymbolResult
+	decodeStructured(t, result, &results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 file result, got %d", len(results))
+	}
+	if len(results[0].Symbols) != 1 {
+		t.Fatalf("expected 1 symbol after filter, got %d", len(results[0].Symbols))
+	}
+	if results[0].Symbols[0].Kind != "class" {
+		t.Fatalf("expected class symbol, got %q", results[0].Symbols[0].Kind)
+	}
+}
+
+func TestHandleSearchKindFilter(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "models.py"), []byte("class User: pass\nAPI_URL = 'x'\n"), 0644)
+
+	args, _ := json.Marshal(map[string]interface{}{
+		"query": "User",
+		"root":  dir,
+		"kinds": []string{"class"},
+	})
+	result := handleToolCall("syms_search", args)
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	var results []SearchResult
+	decodeStructured(t, result, &results)
+	if len(results) == 0 {
+		t.Fatal("expected search results")
+	}
+	for _, r := range results {
+		if r.Symbol.Kind != "class" {
+			t.Fatalf("expected only class results, got %q", r.Symbol.Kind)
+		}
+	}
+}
+
 func TestHandleInvalidArgs(t *testing.T) {
 	result := handleToolCall("syms_list", []byte(`{invalid json`))
 	if !result.IsError {
