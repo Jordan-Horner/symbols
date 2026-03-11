@@ -12,7 +12,7 @@
       "registryType": "mcpb",
       "identifier": "https://github.com/Jordan-Horner/symbols/releases/download/v1.0.3/syms_darwin_arm64.tar.gz",
       "version": "1.0.3",
-      "fileSha256": "ed79cfcaaddbd0ca8e29811ed1dc5336bcb7d8f76102e30888c1cbdce8fe5229",
+      "fileSha256": "74999232fbe27fe1c910998ba85f77abea4160a9a7dd9b7706a9945fc1da659d",
       "transport": {
         "type": "stdio"
       },
