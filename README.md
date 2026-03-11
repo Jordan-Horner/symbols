@@ -20,36 +20,24 @@ symbols graph .                  # project-wide dependency summary
 ```sh
 git clone https://github.com/Jordan-Horner/symbols.git
 cd symbols
-chmod +x symbols
+go build -o symbols .
 
 # Add to PATH (optional)
 echo 'export PATH="$HOME/Projects/symbols:$PATH"' >> ~/.zshrc
 ```
 
-### Dependencies
-
-**Required:** Python 3.10+
-
-**Optional (for non-Python/JS languages):**
-
-```sh
-pip install tree-sitter
-
-# Then install grammars for the languages you need:
-pip install tree-sitter-go tree-sitter-java tree-sitter-rust
-# ... see full list below
-```
-
-Without tree-sitter, symbol extraction still works for Python (via `ast`) and TypeScript/JavaScript/Svelte (via regex). Import graph features work for all supported languages regardless of tree-sitter.
+**Requirements:** Go 1.21+
 
 ## Language support
 
+Symbol extraction uses tree-sitter for full AST parsing (function signatures with parameters, classes, types). Import parsing and dependency resolution use regex.
+
 | Language | Symbols | Import parsing | Dependency resolution |
 |---|---|---|---|
-| Python | `ast` | `ast` | Relative + absolute imports |
-| TypeScript | regex | regex | Relative paths, `$lib`/`@` aliases, `index.ts` |
-| JavaScript | regex | regex | Same as TypeScript |
-| Svelte | regex | regex | Same as TypeScript |
+| Python | tree-sitter | regex | Relative + absolute imports |
+| TypeScript | tree-sitter | regex | Relative paths, `$lib`/`@` aliases, `index.ts` |
+| JavaScript | tree-sitter | regex | Same as TypeScript |
+| Svelte | tree-sitter | regex | Same as TypeScript |
 | Go | tree-sitter | regex | `go.mod` module prefix, package directories |
 | Java | tree-sitter | regex | Dot-to-slash, `src/main/java` prefix |
 | Kotlin | tree-sitter | regex | Same as Java + `.kt` |
@@ -58,7 +46,6 @@ Without tree-sitter, symbol extraction still works for Python (via `ast`) and Ty
 | PHP | tree-sitter | regex | PSR-4 conventions, `require`/`include` |
 | C/C++ | tree-sitter | - | - |
 | Ruby | tree-sitter | - | - |
-| Swift | tree-sitter | - | - |
 | Scala | tree-sitter | - | - |
 | Bash | tree-sitter | - | - |
 
@@ -202,12 +189,9 @@ symbols -r src/ --json
 
 ## How it works
 
-**Symbol extraction** uses three strategies:
-- **Python:** `ast.parse` for reliable function/class extraction
-- **TypeScript/JavaScript/Svelte:** Regex patterns matching top-level declarations
-- **Everything else:** tree-sitter AST parsing with language-specific node type maps
+**Symbol extraction** uses tree-sitter for full AST parsing. Each language has a compiled grammar (linked statically into the binary) that produces a syntax tree. The tool walks the tree to extract top-level declarations with names, kinds, line numbers, and function parameters.
 
-**Import parsing** uses regex patterns tuned to each language's import syntax. This avoids needing tree-sitter for import extraction while staying reliable for standard import forms.
+**Import parsing** uses regex patterns tuned to each language's import syntax. This is fast and reliable for standard import forms without needing AST parsing.
 
 **Dependency resolution** maps import specifiers to actual files on disk using language-specific conventions:
 - Python: module dot-path to file path, relative import resolution
@@ -217,7 +201,7 @@ symbols -r src/ --json
 - C#: namespace-to-path with progressive prefix stripping
 - PHP: PSR-4 backslash-to-slash mapping, `require`/`include` path resolution
 
-**Directory scanning** uses `os.walk` with early pruning of `.git`, `node_modules`, `dist`, `build`, `vendor`, `target`, and other common non-source directories.
+**Directory scanning** uses early pruning of `.git`, `node_modules`, `dist`, `build`, `vendor`, `target`, and other common non-source directories.
 
 ## Project root detection
 
