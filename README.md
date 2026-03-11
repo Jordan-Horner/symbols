@@ -90,6 +90,9 @@ syms list -r src/
 # JSON output (for piping to other tools)
 syms list --json app.py
 
+# Pretty JSON output (human-readable)
+syms list --json --pretty app.py
+
 # Count symbols per file
 syms list --count src/
 
@@ -207,6 +210,9 @@ All commands support `--json` for machine-readable output:
 ```sh
 syms impact --json src/utils.py | jq '.direct_dependents'
 syms graph --json . | jq '.hot_spots[:5]'
+
+# Optional: pretty-print JSON for humans
+syms graph --json --pretty .
 
 # Full edge map (file → its dependencies)
 syms graph --json . | jq '.edges'

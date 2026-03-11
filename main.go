@@ -117,9 +117,11 @@ func findProjectRoot(start string) string {
 	return abs
 }
 
-func printJSON(v interface{}) {
+func printJSON(v interface{}, pretty bool) {
 	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
+	if pretty {
+		enc.SetIndent("", "  ")
+	}
 	enc.Encode(v)
 }
 
@@ -177,13 +179,14 @@ func cmdList(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms list - Extract top-level symbols from files")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--count] [--filter KIND[,KIND...]] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--pretty] [--count] [--filter KIND[,KIND...]] <paths...>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
 	}
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	count := fs.Bool("count", false, "Print symbol count instead of symbols")
 	var filters stringListFlag
 	fs.Var(&filters, "filter", "Filter symbols by kind (repeatable or comma-separated)")
@@ -210,7 +213,7 @@ func cmdList(args []string) {
 			for _, r := range results {
 				counts = append(counts, CountResult{File: r.File, Count: len(r.Symbols)})
 			}
-			printJSON(counts)
+			printJSON(counts, *pretty)
 		} else {
 			for _, r := range results {
 				fmt.Printf("%s: %d symbols\n", r.File, len(r.Symbols))
@@ -218,7 +221,7 @@ func cmdList(args []string) {
 		}
 	} else {
 		if *jsonOut {
-			printJSON(results)
+			printJSON(results, *pretty)
 		} else {
 			for _, r := range results {
 				fmt.Println(FormatSymbolResult(r))
@@ -232,13 +235,14 @@ func cmdImports(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms imports - Show imports for files")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms imports [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms imports [-r] [--json] [--pretty] <paths...>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
 	}
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
 		fs.Usage()
@@ -262,7 +266,7 @@ func cmdImports(args []string) {
 	}
 
 	if *jsonOut {
-		printJSON(results)
+		printJSON(results, *pretty)
 	} else {
 		for _, r := range results {
 			fmt.Println(FormatImportsText(r))
@@ -283,7 +287,7 @@ func cmdDeps(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms deps - Show what files a given file depends on")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms deps [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms deps [-t] [--root DIR] [--json] [--pretty] <file>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -291,6 +295,7 @@ func cmdDeps(args []string) {
 	transitive := fs.Bool("t", false, "Include transitive deps")
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
@@ -307,7 +312,7 @@ func cmdDeps(args []string) {
 		for i, d := range deps {
 			relDeps[i] = graph.rel(d)
 		}
-		printJSON(map[string]interface{}{"file": file, "deps": relDeps})
+		printJSON(map[string]interface{}{"file": file, "deps": relDeps}, *pretty)
 	} else {
 		label := "depends on"
 		if *transitive {
@@ -322,7 +327,7 @@ func cmdDependents(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms dependents - What depends on this file?")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms dependents [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms dependents [-t] [--root DIR] [--json] [--pretty] <file>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -330,6 +335,7 @@ func cmdDependents(args []string) {
 	transitive := fs.Bool("t", false, "Include transitive dependents")
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
@@ -346,7 +352,7 @@ func cmdDependents(args []string) {
 		for i, d := range deps {
 			relDeps[i] = graph.rel(d)
 		}
-		printJSON(map[string]interface{}{"file": file, "dependents": relDeps})
+		printJSON(map[string]interface{}{"file": file, "dependents": relDeps}, *pretty)
 	} else {
 		label := "depended on by"
 		if *transitive {
@@ -361,13 +367,14 @@ func cmdImpact(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms impact - Impact analysis for a file")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms impact [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms impact [--root DIR] [--json] [--pretty] <file>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
 	}
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
@@ -380,7 +387,7 @@ func cmdImpact(args []string) {
 	result := graph.Impact(file)
 
 	if *jsonOut {
-		printJSON(result)
+		printJSON(result, *pretty)
 	} else {
 		fmt.Println(FormatImpactText(result))
 	}
@@ -391,13 +398,14 @@ func cmdGraph(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms graph - Project-wide dependency graph summary")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms graph [--root DIR] [--json] [dir]")
+		fmt.Fprintln(os.Stderr, "Usage: syms graph [--root DIR] [--json] [--pretty] [dir]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
 	}
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	positional := parseFlags(args, fs)
 
 	dir := "."
@@ -414,7 +422,7 @@ func cmdGraph(args []string) {
 	summary := graph.Summary()
 
 	if *jsonOut {
-		printJSON(summary)
+		printJSON(summary, *pretty)
 	} else {
 		fmt.Println(FormatSummaryText(summary))
 	}
@@ -424,12 +432,13 @@ func cmdSearch(args []string) {
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
 	var filters stringListFlag
 	fs.Var(&filters, "filter", "Filter symbols by kind (repeatable or comma-separated)")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms search [--root DIR] [--json] [--filter KIND[,KIND...]] <query>")
+		fmt.Fprintln(os.Stderr, "Usage: syms search [--root DIR] [--json] [--pretty] [--filter KIND[,KIND...]] <query>")
 		os.Exit(1)
 	}
 	query := positional[0]
@@ -442,7 +451,7 @@ func cmdSearch(args []string) {
 	results := SearchSymbolsWithKinds(searchRoot, files, query, []string(filters))
 
 	if *jsonOut {
-		printJSON(results)
+		printJSON(results, *pretty)
 	} else {
 		fmt.Print(FormatSearchText(results, query))
 	}
