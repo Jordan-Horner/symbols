@@ -28,7 +28,10 @@ var sourceExts = map[string]bool{
 
 // NewProjectIndex builds an index from a list of absolute file paths.
 func NewProjectIndex(root string, files []string) *ProjectIndex {
-	absRoot, _ := filepath.Abs(root)
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		absRoot = root
+	}
 	idx := &ProjectIndex{
 		Root:      absRoot,
 		byModule:  make(map[string]string),
@@ -50,7 +53,10 @@ func NewProjectIndex(root string, files []string) *ProjectIndex {
 	}
 
 	for _, f := range files {
-		absF, _ := filepath.Abs(f)
+		absF, err := filepath.Abs(f)
+		if err != nil {
+			continue
+		}
 		idx.allFiles[absF] = true
 
 		rel, err := filepath.Rel(absRoot, absF)
@@ -131,7 +137,10 @@ func (idx *ProjectIndex) ResolvePython(module, fromFile string) string {
 			}
 		}
 		remainder := module[dots:]
-		fromAbs, _ := filepath.Abs(fromFile)
+		fromAbs, err := filepath.Abs(fromFile)
+		if err != nil {
+			return ""
+		}
 		base := filepath.Dir(fromAbs)
 		for i := 0; i < dots-1; i++ {
 			base = filepath.Dir(base)
@@ -189,7 +198,10 @@ func (idx *ProjectIndex) ResolveTS(specifier, fromFile string) string {
 		return ""
 	}
 
-	fromAbs, _ := filepath.Abs(fromFile)
+	fromAbs, err := filepath.Abs(fromFile)
+	if err != nil {
+		return ""
+	}
 	base := filepath.Dir(fromAbs)
 	if strings.HasPrefix(specifier, "/") {
 		base = idx.Root
@@ -197,7 +209,10 @@ func (idx *ProjectIndex) ResolveTS(specifier, fromFile string) string {
 	}
 
 	target := filepath.Join(base, specifier)
-	target, _ = filepath.Abs(target)
+	target, err2 := filepath.Abs(target)
+	if err2 != nil {
+		return ""
+	}
 
 	if idx.allFiles[target] {
 		return target
@@ -307,7 +322,10 @@ func (idx *ProjectIndex) ResolveKotlin(module, fromFile string) string {
 // ── Rust resolver ───────────────────────────────────────────────────────────
 
 func (idx *ProjectIndex) ResolveRust(module, kind, fromFile string) string {
-	fromAbs, _ := filepath.Abs(fromFile)
+	fromAbs, err := filepath.Abs(fromFile)
+	if err != nil {
+		return ""
+	}
 
 	if kind == "mod" {
 		parent := filepath.Dir(fromAbs)
@@ -416,12 +434,18 @@ func (idx *ProjectIndex) ResolveCSharp(namespace, fromFile string) string {
 
 func (idx *ProjectIndex) ResolvePHP(module, kind, fromFile string) string {
 	if kind == "require" {
-		fromAbs, _ := filepath.Abs(fromFile)
-		candidate, _ := filepath.Abs(filepath.Join(filepath.Dir(fromAbs), module))
-		if idx.allFiles[candidate] {
+		fromAbs, err := filepath.Abs(fromFile)
+		if err != nil {
+			return ""
+		}
+		candidate, err := filepath.Abs(filepath.Join(filepath.Dir(fromAbs), module))
+		if err == nil && idx.allFiles[candidate] {
 			return candidate
 		}
-		candidate, _ = filepath.Abs(filepath.Join(idx.Root, module))
+		candidate, err = filepath.Abs(filepath.Join(idx.Root, module))
+		if err != nil {
+			return ""
+		}
 		if idx.allFiles[candidate] {
 			return candidate
 		}

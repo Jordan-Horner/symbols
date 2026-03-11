@@ -28,6 +28,7 @@ type SymbolResult struct {
 // Python: extract via regex on def/class lines
 var pyDefRe = regexp.MustCompile(`^(async\s+)?def\s+(\w+)\s*\(`)
 var pyClassRe = regexp.MustCompile(`^class\s+(\w+)`)
+var pyAssignRe = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9_]*)\s*(?::\s*[A-Za-z][\w\[\], .]*\s*)?=\s*[^=]`)
 
 func extractSymbolsPython(content string) []Symbol {
 	var symbols []Symbol
@@ -49,6 +50,13 @@ func extractSymbolsPython(content string) []Symbol {
 			symbols = append(symbols, Symbol{Name: m[2], Kind: kind, Line: lineno})
 		} else if m := pyClassRe.FindStringSubmatch(trimmed); m != nil {
 			symbols = append(symbols, Symbol{Name: m[1], Kind: "class", Line: lineno})
+		} else if m := pyAssignRe.FindStringSubmatch(trimmed); m != nil {
+			name := m[1]
+			kind := "variable"
+			if name == strings.ToUpper(name) && len(name) > 1 {
+				kind = "constant"
+			}
+			symbols = append(symbols, Symbol{Name: name, Kind: kind, Line: lineno})
 		}
 	}
 	return symbols

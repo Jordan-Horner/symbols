@@ -34,7 +34,11 @@ func collectFiles(paths []string, recursive bool) []string {
 		if !info.IsDir() {
 			ext := strings.ToLower(filepath.Ext(p))
 			if sourceExts[ext] {
-				abs, _ := filepath.Abs(p)
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: %s: %v\n", p, err)
+					continue
+				}
 				files = append(files, abs)
 			}
 			continue
@@ -42,6 +46,7 @@ func collectFiles(paths []string, recursive bool) []string {
 		if recursive {
 			filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: %s: %v\n", path, err)
 					return nil
 				}
 				if info.IsDir() {
@@ -53,7 +58,11 @@ func collectFiles(paths []string, recursive bool) []string {
 				}
 				ext := strings.ToLower(filepath.Ext(path))
 				if sourceExts[ext] {
-					abs, _ := filepath.Abs(path)
+					abs, err := filepath.Abs(path)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: %s: %v\n", path, err)
+						return nil
+					}
 					files = append(files, abs)
 				}
 				return nil
@@ -69,7 +78,11 @@ func collectFiles(paths []string, recursive bool) []string {
 				}
 				ext := strings.ToLower(filepath.Ext(e.Name()))
 				if sourceExts[ext] {
-					abs, _ := filepath.Abs(filepath.Join(p, e.Name()))
+					abs, err := filepath.Abs(filepath.Join(p, e.Name()))
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: %s: %v\n", e.Name(), err)
+						continue
+					}
 					files = append(files, abs)
 				}
 			}
@@ -80,7 +93,10 @@ func collectFiles(paths []string, recursive bool) []string {
 }
 
 func findProjectRoot(start string) string {
-	abs, _ := filepath.Abs(start)
+	abs, err := filepath.Abs(start)
+	if err != nil {
+		return start
+	}
 	info, err := os.Stat(abs)
 	if err == nil && !info.IsDir() {
 		abs = filepath.Dir(abs)
