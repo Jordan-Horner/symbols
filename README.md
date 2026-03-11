@@ -17,6 +17,8 @@ No language server required. No build step for your projects. Just point it at y
   - [Project graph summary](#project-graph-summary)
   - [JSON output](#json-output)
   - [Shorthand](#shorthand)
+  - [Symbol search](#symbol-search)
+- [MCP server](#mcp-server)
 - [How it works](#how-it-works)
 - [Project root detection](#project-root-detection)
 - [Limitations](#limitations)
@@ -31,6 +33,8 @@ syms deps server.py           # files this file imports from
 syms dependents server.py     # files that import this file
 syms impact server.py         # full impact analysis (direct + transitive)
 syms graph .                  # project-wide dependency summary
+syms search User              # find symbols by name across a project
+syms mcp                      # run as MCP server for AI tools
 ```
 
 ## Install
@@ -210,6 +214,63 @@ syms app.py
 
 # Flags work too:
 syms -r src/ --json
+```
+
+### Symbol search
+
+```sh
+# Find symbols by name (fuzzy: exact > prefix > contains)
+syms search User
+
+# JSON output
+syms search --json handle
+
+# Search in a specific project
+syms search --root /path/to/project Config
+```
+
+**Output:**
+
+```
+Found 3 symbols matching "User":
+
+  class User  models.py:1
+  class UserProfile  models.py:5
+  function get_user(id)  api/handlers.py:12
+```
+
+## MCP server
+
+Run `syms` as an MCP server for AI tool integration (e.g. Claude Code):
+
+```sh
+syms mcp
+```
+
+Exposes all functionality as structured MCP tools over stdio (JSON-RPC 2.0):
+
+| Tool | Description |
+|---|---|
+| `syms_list` | Extract symbols from files |
+| `syms_imports` | Parse import statements |
+| `syms_deps` | File dependencies |
+| `syms_dependents` | Reverse dependencies |
+| `syms_impact` | Impact analysis |
+| `syms_search` | Search symbols by name |
+| `syms_graph` | Project dependency graph |
+
+**Claude Code configuration** (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "syms": {
+      "type": "stdio",
+      "command": "syms",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
 ## How it works

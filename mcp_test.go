@@ -9,8 +9,8 @@ import (
 
 func TestMCPTools(t *testing.T) {
 	tools := mcpTools()
-	if len(tools) != 6 {
-		t.Fatalf("expected 6 tools, got %d", len(tools))
+	if len(tools) != 7 {
+		t.Fatalf("expected 7 tools, got %d", len(tools))
 	}
 
 	names := make(map[string]bool)
@@ -24,7 +24,7 @@ func TestMCPTools(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"syms_list", "syms_imports", "syms_deps", "syms_dependents", "syms_impact", "syms_graph"} {
+	for _, want := range []string{"syms_list", "syms_imports", "syms_deps", "syms_dependents", "syms_impact", "syms_search", "syms_graph"} {
 		if !names[want] {
 			t.Errorf("missing tool %s", want)
 		}

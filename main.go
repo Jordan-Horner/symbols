@@ -340,12 +340,38 @@ func cmdGraph(args []string) {
 	}
 }
 
+func cmdSearch(args []string) {
+	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	root := fs.String("root", "", "Project root (auto-detected if omitted)")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	positional := parseFlags(args, fs)
+
+	if len(positional) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: syms search [--root DIR] [--json] <query>")
+		os.Exit(1)
+	}
+	query := positional[0]
+
+	searchRoot := *root
+	if searchRoot == "" {
+		searchRoot = findProjectRoot(".")
+	}
+	files := collectFiles([]string{searchRoot}, true)
+	results := SearchSymbols(searchRoot, files, query)
+
+	if *jsonOut {
+		printJSON(results)
+	} else {
+		fmt.Print(FormatSearchText(results, query))
+	}
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 var subcommands = map[string]bool{
 	"list": true, "imports": true, "deps": true,
 	"dependents": true, "impact": true, "graph": true,
-	"mcp": true,
+	"search": true, "mcp": true,
 }
 
 func main() {
@@ -360,6 +386,7 @@ func main() {
 		fmt.Println("  dependents   What depends on this file?")
 		fmt.Println("  impact       Impact analysis for a file")
 		fmt.Println("  graph        Project-wide dependency graph summary")
+		fmt.Println("  search       Search for symbols by name across a project")
 		fmt.Println("  mcp          Run as MCP server (stdio)")
 
 		os.Exit(1)
@@ -393,6 +420,8 @@ func main() {
 		cmdImpact(rest)
 	case "graph":
 		cmdGraph(rest)
+	case "search":
+		cmdSearch(rest)
 	case "mcp":
 		runMCP()
 	default:

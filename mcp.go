@@ -155,6 +155,21 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "syms_search",
+			Description: "Search for symbols by name across a project. Matches are ranked: exact > prefix > contains (case-insensitive).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol name to search for",
+					},
+					"root": rootProp,
+				},
+				"required": []string{"query", "root"},
+			},
+		},
+		{
 			Name:        "syms_graph",
 			Description: "Project-wide dependency graph summary with hot spots, heaviest importers, and circular dependencies",
 			InputSchema: map[string]interface{}{
@@ -185,6 +200,8 @@ func handleToolCall(name string, args json.RawMessage) mcpToolResult {
 		return handleDependents(args)
 	case "syms_impact":
 		return handleImpact(args)
+	case "syms_search":
+		return handleSearch(args)
 	case "syms_graph":
 		return handleGraph(args)
 	default:
@@ -295,6 +312,27 @@ func handleImpact(args json.RawMessage) mcpToolResult {
 	graph, _ := buildGraphForFile(p.File, p.Root)
 	result := graph.Impact(p.File)
 	return jsonResult(result)
+}
+
+func handleSearch(args json.RawMessage) mcpToolResult {
+	var p struct {
+		Query string `json:"query"`
+		Root  string `json:"root"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return errResult("invalid arguments: " + err.Error())
+	}
+	root := p.Root
+	if root == "" {
+		root = "."
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return errResult("invalid root: " + err.Error())
+	}
+	files := collectFiles([]string{absRoot}, true)
+	results := SearchSymbols(absRoot, files, p.Query)
+	return jsonResult(results)
 }
 
 func handleGraph(args json.RawMessage) mcpToolResult {
