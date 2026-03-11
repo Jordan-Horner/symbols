@@ -141,6 +141,7 @@ type GraphSummary struct {
 	HotSpots          []FileCount        `json:"hot_spots"`
 	HeaviestImporters []FileCount        `json:"heaviest_importers"`
 	CircularPairs     [][2]string        `json:"circular_pairs"`
+	Edges             map[string][]string `json:"edges,omitempty"`
 }
 
 // FileCount pairs a file path with a count.
@@ -213,11 +214,24 @@ func (g *DepGraph) Summary() GraphSummary {
 		circular = circular[:20]
 	}
 
+	// Build relative-path edge map
+	edgeMap := make(map[string][]string, len(g.Edges))
+	for from, deps := range g.Edges {
+		relFrom := g.rel(from)
+		targets := make([]string, 0, len(deps))
+		for to := range deps {
+			targets = append(targets, g.rel(to))
+		}
+		sort.Strings(targets)
+		edgeMap[relFrom] = targets
+	}
+
 	result := GraphSummary{
 		TotalFiles:        len(allFiles),
 		TotalEdges:        totalEdges,
 		UnresolvedImports: totalUnresolved,
 		CircularPairs:     circular,
+		Edges:             edgeMap,
 	}
 	for _, hs := range hotSpots {
 		result.HotSpots = append(result.HotSpots, FileCount{g.rel(hs.file), hs.count})

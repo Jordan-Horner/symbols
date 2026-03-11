@@ -2,17 +2,17 @@
 
 A fast, polyglot source code intelligence CLI. Extract symbols, parse imports, trace dependencies, and analyze impact — all from the command line.
 
-No language server required. No build step. Just point it at your code.
+No language server required. No build step for your projects. Just point it at your code.
 
 ## What it does
 
 ```
-symbols list server.py           # functions, classes, types with line numbers
-symbols imports server.py        # parsed import statements
-symbols deps server.py           # files this file imports from
-symbols dependents server.py     # files that import this file
-symbols impact server.py         # full impact analysis (direct + transitive)
-symbols graph .                  # project-wide dependency summary
+syms list server.py           # functions, classes, types with line numbers
+syms imports server.py        # parsed import statements
+syms deps server.py           # files this file imports from
+syms dependents server.py     # files that import this file
+syms impact server.py         # full impact analysis (direct + transitive)
+syms graph .                  # project-wide dependency summary
 ```
 
 ## Install
@@ -20,10 +20,11 @@ symbols graph .                  # project-wide dependency summary
 ```sh
 git clone https://github.com/Jordan-Horner/symbols.git
 cd symbols
-go build -o symbols .
+go build -o syms .
+sudo mv syms /usr/local/bin/
 ```
 
-**Requirements:** Go 1.21+
+**Requirements:** Go 1.26+
 
 ## Language support
 
@@ -52,16 +53,16 @@ Symbol extraction uses tree-sitter for full AST parsing (function signatures wit
 
 ```sh
 # Single file
-symbols list app.py
+syms list app.py
 
 # Multiple files
-symbols list src/main.go src/handlers.go
+syms list src/main.go src/handlers.go
 
 # Recursive directory scan
-symbols list -r src/
+syms list -r src/
 
 # JSON output (for piping to other tools)
-symbols list --json app.py
+syms list --json app.py
 ```
 
 **Output:**
@@ -78,7 +79,7 @@ symbols list --json app.py
 ### Import parsing
 
 ```sh
-symbols imports server.py
+syms imports server.py
 ```
 
 **Output:**
@@ -95,22 +96,22 @@ symbols imports server.py
 
 ```sh
 # Direct dependencies
-symbols deps src/handlers.go
+syms deps src/handlers.go
 
 # Transitive (everything it depends on, recursively)
-symbols deps -t src/handlers.go
+syms deps -t src/handlers.go
 
 # Who imports this file?
-symbols dependents src/models.py
+syms dependents src/models.py
 
 # Transitive dependents
-symbols dependents -t src/models.py
+syms dependents -t src/models.py
 ```
 
 ### Impact analysis
 
 ```sh
-symbols impact src/core/utils.py
+syms impact src/core/utils.py
 ```
 
 **Output:**
@@ -137,7 +138,7 @@ symbols impact src/core/utils.py
 ### Project graph summary
 
 ```sh
-symbols graph .
+syms graph .
 ```
 
 **Output:**
@@ -167,21 +168,21 @@ Project dependency graph
 All commands support `--json` for machine-readable output:
 
 ```sh
-symbols impact --json src/utils.py | jq '.direct_dependents'
-symbols graph --json . | jq '.hot_spots[:5]'
+syms impact --json src/utils.py | jq '.direct_dependents'
+syms graph --json . | jq '.hot_spots[:5]'
 ```
 
-### Backward compatibility
+### Shorthand
 
 The `list` subcommand is the default — you can omit it:
 
 ```sh
 # These are equivalent:
-symbols list app.py
-symbols app.py
+syms list app.py
+syms app.py
 
 # Flags work too:
-symbols -r src/ --json
+syms -r src/ --json
 ```
 
 ## How it works
@@ -205,7 +206,7 @@ symbols -r src/ --json
 For `deps`, `dependents`, `impact`, and `graph`, the tool auto-detects the project root by walking up the directory tree looking for `.git`, `package.json`, or `pyproject.toml`. Override with `--root`:
 
 ```sh
-symbols deps src/app.py --root /path/to/project
+syms deps src/app.py --root /path/to/project
 ```
 
 ## Limitations

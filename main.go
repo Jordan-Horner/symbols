@@ -110,7 +110,7 @@ func printJSON(v interface{}) {
 // ── Subcommands ─────────────────────────────────────────────────────────────
 
 // parseFlags separates flags from positional args since Go's flag package
-// stops at the first non-flag argument. This allows `symbols file.py --json`.
+// stops at the first non-flag argument. This allows `syms file.py --json`.
 func parseFlags(args []string, fs *flag.FlagSet) []string {
 	// Build set of flags that take values
 	valuedFlags := make(map[string]bool)
@@ -151,7 +151,7 @@ func cmdList(args []string) {
 	jsonOut := fs.Bool("json", false, "JSON output")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: symbols list [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] <paths...>")
 		os.Exit(1)
 	}
 
@@ -177,7 +177,7 @@ func cmdImports(args []string) {
 	jsonOut := fs.Bool("json", false, "JSON output")
 	paths := parseFlags(args, fs)
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: symbols imports [-r] [--json] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms imports [-r] [--json] <paths...>")
 		os.Exit(1)
 	}
 
@@ -222,7 +222,7 @@ func cmdDeps(args []string) {
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: symbols deps [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms deps [-t] [--root DIR] [--json] <file>")
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -253,7 +253,7 @@ func cmdDependents(args []string) {
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: symbols dependents [-t] [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms dependents [-t] [--root DIR] [--json] <file>")
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -283,7 +283,7 @@ func cmdImpact(args []string) {
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: symbols impact [--root DIR] [--json] <file>")
+		fmt.Fprintln(os.Stderr, "Usage: syms impact [--root DIR] [--json] <file>")
 		os.Exit(1)
 	}
 	file := positional[0]
@@ -334,7 +334,7 @@ var subcommands = map[string]bool{
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		fmt.Println("Usage: symbols <command> [options] [args]")
+		fmt.Println("Usage: syms <command> [options] [args]")
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("  list         Extract top-level symbols from files")
