@@ -180,6 +180,7 @@ var tsSymbolTypes = map[string]map[string]bool{
 var tsToplevelParents = map[string]bool{
 	"source_file":                true,
 	"program":                    true,
+	"translation_unit":           true,
 	"compilation_unit":           true,
 	"class_body":                 true,
 	"declaration_list":           true,

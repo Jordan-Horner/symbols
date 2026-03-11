@@ -383,3 +383,44 @@ func TestExtractSymbolsWithoutRangesByDefault(t *testing.T) {
 		t.Fatalf("expected no range fields by default, got %+v", s)
 	}
 }
+
+func TestExtractSymbolsWithRangesLanguageMatrix(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		content string
+	}{
+		{name: "python", file: "a.py", content: "def foo(x):\n    return x\n"},
+		{name: "typescript", file: "a.ts", content: "export function foo(x: number) { return x }\n"},
+		{name: "tsx", file: "a.tsx", content: "export function Foo() { return <div/> }\n"},
+		{name: "javascript", file: "a.js", content: "function foo(x) { return x }\n"},
+		{name: "go", file: "a.go", content: "package main\nfunc main() {}\n"},
+		{name: "java", file: "A.java", content: "class A { void m() {} }\n"},
+		{name: "kotlin", file: "A.kt", content: "class A { fun m() {} }\n"},
+		{name: "rust", file: "a.rs", content: "fn foo() {}\n"},
+		{name: "csharp", file: "A.cs", content: "class A { void M() {} }\n"},
+		{name: "php", file: "a.php", content: "<?php\nfunction foo() {}\n"},
+		{name: "c", file: "a.c", content: "int foo() { return 1; }\n"},
+		{name: "cpp", file: "a.cpp", content: "int foo() { return 1; }\n"},
+		{name: "ruby", file: "a.rb", content: "class A\nend\n"},
+		{name: "scala", file: "A.scala", content: "object A {}\n"},
+		{name: "bash", file: "a.sh", content: "foo() { echo hi; }\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := ExtractSymbolsWithOptions(tt.file, tt.content, ExtractionOptions{IncludeRanges: true})
+			if r.Error != "" {
+				t.Fatalf("unexpected error: %s", r.Error)
+			}
+			if len(r.Symbols) == 0 {
+				t.Fatalf("expected at least one symbol, got none for %s", tt.file)
+			}
+			for _, s := range r.Symbols {
+				if s.StartLine == nil || s.EndLine == nil || s.StartCol == nil || s.EndCol == nil {
+					t.Fatalf("expected range fields for symbol %+v in %s", s, tt.file)
+				}
+			}
+		})
+	}
+}
