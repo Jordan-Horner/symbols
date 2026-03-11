@@ -20,6 +20,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Check release metadata
+        run: python3 scripts/check_release_metadata.py
+
       - name: Run tests
         run: go test -race -count=1 -timeout 60s ./...
 
@@ -40,6 +43,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Check release metadata
+        run: python3 scripts/check_release_metadata.py
 
       - name: Run tests
         run: go test -race -count=1 -timeout 60s ./...

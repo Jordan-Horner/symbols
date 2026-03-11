@@ -19,6 +19,9 @@ jobs:
       - name: Build
         run: go build -o syms .
 
+      - name: Check release metadata
+        run: python3 scripts/check_release_metadata.py
+
       - name: Test
         run: go test -race -count=1 -timeout 60s ./...
 
