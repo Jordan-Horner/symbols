@@ -4,6 +4,10 @@ A fast, polyglot source code intelligence CLI. Extract symbols, parse imports, t
 
 No language server required. No build step for your projects. Just point it at your code.
 
+<a href="https://glama.ai/mcp/servers/Jordan-Horner/symbols">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/Jordan-Horner/symbols/badge" alt="symbols MCP server" />
+</a>
+
 ## Table of contents
 
 - [What it does](#what-it-does)
