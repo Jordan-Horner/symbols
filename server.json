@@ -10,13 +10,13 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/Jordan-Horner/symbols/releases/download/v1.0.3/syms_darwin_arm64.tar.gz",
+      "identifier": "https://github.com/Jordan-Horner/symbols/releases/download/v1.0.3/syms-mcp_darwin_arm64.tar.gz",
       "version": "1.0.3",
-      "fileSha256": "74999232fbe27fe1c910998ba85f77abea4160a9a7dd9b7706a9945fc1da659d",
+      "fileSha256": "21450bddfb00ce25484aa63bfaa59ab2ea3a82758dfe67430e9912c5ad6b65e6",
       "transport": {
         "type": "stdio"
       },
-      "packageArguments": [{"name": "command", "value": "mcp", "isRequired": true}],
+      "packageArguments": [{"name": "command", "value": "mcp", "isRequired": true, "type": "positional"}],
       "environmentVariables": []
     }
   ]
