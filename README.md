@@ -312,4 +312,4 @@ syms deps src/app.py --root /path/to/project
 
 ## License
 
-MIT
+[MIT](LICENSE)
