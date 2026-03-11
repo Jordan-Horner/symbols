@@ -17,18 +17,9 @@ builds:
       - arm64
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
-
-brews:
-  - repository:
-      owner: Jordan-Horner
-      name: homebrew-tap
-    homepage: "https://github.com/Jordan-Horner/symbols"
-    description: "Fast polyglot source code intelligence CLI"
-    license: "MIT"
-    install: |
-      bin.install "syms"
 
 checksum:
   name_template: "checksums.txt"
