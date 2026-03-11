@@ -1,0 +1,33 @@
+name: Tree-sitter Canary
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  latest-tree-sitter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Upgrade tree-sitter deps to latest
+        run: |
+          set -euo pipefail
+          modules="$(go list -m -f '{{.Path}}' all | grep '^github.com/tree-sitter' || true)"
+          if [ -z "$modules" ]; then
+            echo "No tree-sitter modules found"
+            exit 0
+          fi
+          echo "$modules" | xargs -n 1 go get -u
+          go mod tidy
+
+      - name: Build
+        run: go build -o syms .
+
+      - name: Test
+        run: go test -race -count=1 -timeout 60s ./...

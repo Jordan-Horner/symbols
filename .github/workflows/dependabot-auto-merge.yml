@@ -1,0 +1,41 @@
+name: Dependabot Auto-merge (Tree-sitter)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Enable auto-merge for safe tree-sitter updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+
+          if [ "${UPDATE_TYPE}" != "version-update:semver-patch" ] && [ "${UPDATE_TYPE}" != "version-update:semver-minor" ]; then
+            echo "Skipping: update type ${UPDATE_TYPE} is not patch/minor"
+            exit 0
+          fi
+
+          if ! echo "${DEPENDENCY_NAMES}" | tr ',' '\n' | grep -q '^github.com/tree-sitter'; then
+            echo "Skipping: no github.com/tree-sitter dependency in PR"
+            exit 0
+          fi
+
+          gh pr merge --auto --squash "${PR_URL}"
