@@ -116,6 +116,10 @@ func mcpTools() []mcpTool {
 						"items":       map[string]interface{}{"type": "string"},
 						"description": "Optional symbol kind filter (e.g. class, function, constant)",
 					},
+					"include_ranges": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Include symbol range metadata (start/end line/column)",
+					},
 				},
 				"required": []string{"paths"},
 			},
@@ -186,6 +190,10 @@ func mcpTools() []mcpTool {
 						"items":       map[string]interface{}{"type": "string"},
 						"description": "Optional symbol kind filter",
 					},
+					"include_ranges": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Include symbol range metadata (start/end line/column)",
+					},
 				},
 				"required": []string{"query"},
 			},
@@ -234,9 +242,10 @@ func handleToolCall(name string, args json.RawMessage) mcpToolResult {
 
 func handleList(args json.RawMessage) mcpToolResult {
 	var p struct {
-		Paths     []string `json:"paths"`
-		Recursive bool     `json:"recursive"`
-		Kinds     []string `json:"kinds"`
+		Paths         []string `json:"paths"`
+		Recursive     bool     `json:"recursive"`
+		Kinds         []string `json:"kinds"`
+		IncludeRanges bool     `json:"include_ranges"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return errResult("invalid arguments: " + err.Error())
@@ -246,7 +255,10 @@ func handleList(args json.RawMessage) mcpToolResult {
 	if len(files) == 0 {
 		return textResult("No supported files found.")
 	}
-	results := filterSymbolResultsByKind(ExtractSymbolsParallel(files), p.Kinds)
+	results := filterSymbolResultsByKind(
+		ExtractSymbolsParallelWithOptions(files, ExtractionOptions{IncludeRanges: p.IncludeRanges}),
+		p.Kinds,
+	)
 	return jsonResult(results)
 }
 
@@ -337,9 +349,10 @@ func handleImpact(args json.RawMessage) mcpToolResult {
 
 func handleSearch(args json.RawMessage) mcpToolResult {
 	var p struct {
-		Query string   `json:"query"`
-		Root  string   `json:"root"`
-		Kinds []string `json:"kinds"`
+		Query         string   `json:"query"`
+		Root          string   `json:"root"`
+		Kinds         []string `json:"kinds"`
+		IncludeRanges bool     `json:"include_ranges"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return errResult("invalid arguments: " + err.Error())
@@ -353,7 +366,7 @@ func handleSearch(args json.RawMessage) mcpToolResult {
 		return errResult("invalid root: " + err.Error())
 	}
 	files := collectFiles([]string{absRoot}, true)
-	results := SearchSymbolsWithKinds(absRoot, files, p.Query, p.Kinds)
+	results := SearchSymbolsWithKindsAndOptions(absRoot, files, p.Query, p.Kinds, ExtractionOptions{IncludeRanges: p.IncludeRanges})
 	return jsonResult(results)
 }
 

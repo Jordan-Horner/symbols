@@ -21,7 +21,12 @@ func SearchSymbols(root string, files []string, query string) []SearchResult {
 
 // SearchSymbolsWithKinds searches for symbols and optionally filters by symbol kind.
 func SearchSymbolsWithKinds(root string, files []string, query string, kinds []string) []SearchResult {
-	results := ExtractSymbolsParallel(files)
+	return SearchSymbolsWithKindsAndOptions(root, files, query, kinds, ExtractionOptions{})
+}
+
+// SearchSymbolsWithKindsAndOptions searches for symbols with optional kind filters and extraction options.
+func SearchSymbolsWithKindsAndOptions(root string, files []string, query string, kinds []string, opts ExtractionOptions) []SearchResult {
+	results := ExtractSymbolsParallelWithOptions(files, opts)
 	queryLower := strings.ToLower(query)
 	kindSet := buildKindSet(kinds)
 

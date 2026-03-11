@@ -6,14 +6,14 @@ import (
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
+	tree_sitter_kotlin "github.com/tree-sitter-grammars/tree-sitter-kotlin/bindings/go"
 	tree_sitter_bash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
+	tree_sitter_csharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tree_sitter_c "github.com/tree-sitter/tree-sitter-c/bindings/go"
 	tree_sitter_cpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
-	tree_sitter_csharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	tree_sitter_java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
-	tree_sitter_kotlin "github.com/tree-sitter-grammars/tree-sitter-kotlin/bindings/go"
 	tree_sitter_php "github.com/tree-sitter/tree-sitter-php/bindings/go"
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	tree_sitter_ruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
@@ -89,29 +89,29 @@ var tsSymbolTypes = map[string]map[string]bool{
 		"expression_statement": true, // module-level assignments
 	},
 	"javascript": {
-		"function_declaration":  true,
-		"class_declaration":     true,
-		"method_definition":     true,
+		"function_declaration":           true,
+		"class_declaration":              true,
+		"method_definition":              true,
 		"generator_function_declaration": true,
 	},
 	"typescript": {
-		"function_declaration":     true,
-		"class_declaration":        true,
-		"method_definition":        true,
-		"interface_declaration":    true,
-		"type_alias_declaration":   true,
-		"enum_declaration":         true,
-		"lexical_declaration":      true,
+		"function_declaration":       true,
+		"class_declaration":          true,
+		"method_definition":          true,
+		"interface_declaration":      true,
+		"type_alias_declaration":     true,
+		"enum_declaration":           true,
+		"lexical_declaration":        true,
 		"abstract_class_declaration": true,
 	},
 	"tsx": {
-		"function_declaration":     true,
-		"class_declaration":        true,
-		"method_definition":        true,
-		"interface_declaration":    true,
-		"type_alias_declaration":   true,
-		"enum_declaration":         true,
-		"lexical_declaration":      true,
+		"function_declaration":       true,
+		"class_declaration":          true,
+		"method_definition":          true,
+		"interface_declaration":      true,
+		"type_alias_declaration":     true,
+		"enum_declaration":           true,
+		"lexical_declaration":        true,
 		"abstract_class_declaration": true,
 	},
 	"go": {
@@ -134,7 +134,7 @@ var tsSymbolTypes = map[string]map[string]bool{
 		"function_item": true,
 		"struct_item":   true,
 		"impl_item":     true,
-		"trait_item":     true,
+		"trait_item":    true,
 		"enum_item":     true,
 	},
 	"c_sharp": {
@@ -178,24 +178,24 @@ var tsSymbolTypes = map[string]map[string]bool{
 
 // Parent node types that qualify as "top-level"
 var tsToplevelParents = map[string]bool{
-	"source_file":        true,
-	"program":            true,
-	"compilation_unit":   true,
-	"class_body":         true,
-	"declaration_list":   true,
-	"class_declaration":  true,
-	"interface_body":     true,
-	"type_declaration":   true,
-	"module":             true, // Python module-level
-	"template":           true, // PHP
-	"export_statement":   true, // TS/JS: export function/class/interface
+	"source_file":                true,
+	"program":                    true,
+	"compilation_unit":           true,
+	"class_body":                 true,
+	"declaration_list":           true,
+	"class_declaration":          true,
+	"interface_body":             true,
+	"type_declaration":           true,
+	"module":                     true, // Python module-level
+	"template":                   true, // PHP
+	"export_statement":           true, // TS/JS: export function/class/interface
 	"abstract_class_declaration": true,
 }
 
 // ── Extraction ──────────────────────────────────────────────────────────────
 
 // extractTreeSitter parses source with tree-sitter and extracts symbols.
-func extractTreeSitter(content []byte, langName string) []Symbol {
+func extractTreeSitter(content []byte, langName string, includeRanges bool) []Symbol {
 	languages := getTSLanguages()
 	lang, ok := languages[langName]
 	if !ok {
@@ -218,11 +218,11 @@ func extractTreeSitter(content []byte, langName string) []Symbol {
 	}
 
 	var symbols []Symbol
-	walkNode(tree.RootNode(), content, langName, symbolTypes, &symbols)
+	walkNode(tree.RootNode(), content, langName, symbolTypes, &symbols, includeRanges)
 	return symbols
 }
 
-func walkNode(node *tree_sitter.Node, source []byte, langName string, symbolTypes map[string]bool, symbols *[]Symbol) {
+func walkNode(node *tree_sitter.Node, source []byte, langName string, symbolTypes map[string]bool, symbols *[]Symbol, includeRanges bool) {
 	if node == nil {
 		return
 	}
@@ -237,7 +237,7 @@ func walkNode(node *tree_sitter.Node, source []byte, langName string, symbolType
 			parentType = parent.Kind()
 		}
 		if tsToplevelParents[parentType] {
-			sym := extractSymbolFromNode(node, source, langName, nodeType)
+			sym := extractSymbolFromNode(node, source, langName, nodeType, includeRanges)
 			if sym.Name != "" {
 				*symbols = append(*symbols, sym)
 			}
@@ -249,22 +249,37 @@ func walkNode(node *tree_sitter.Node, source []byte, langName string, symbolType
 	for i := uint(0); i < childCount; i++ {
 		child := node.Child(i)
 		if child != nil {
-			walkNode(child, source, langName, symbolTypes, symbols)
+			walkNode(child, source, langName, symbolTypes, symbols, includeRanges)
 		}
 	}
 }
 
-func extractSymbolFromNode(node *tree_sitter.Node, source []byte, langName, nodeType string) Symbol {
+func symbolWithRange(name, kind string, line int, node *tree_sitter.Node, includeRanges bool) Symbol {
+	s := Symbol{Name: name, Kind: kind, Line: line}
+	if includeRanges && node != nil {
+		sl := int(node.StartPosition().Row) + 1
+		el := int(node.EndPosition().Row) + 1
+		sc := int(node.StartPosition().Column) + 1
+		ec := int(node.EndPosition().Column) + 1
+		s.StartLine = &sl
+		s.EndLine = &el
+		s.StartCol = &sc
+		s.EndCol = &ec
+	}
+	return s
+}
+
+func extractSymbolFromNode(node *tree_sitter.Node, source []byte, langName, nodeType string, includeRanges bool) Symbol {
 	line := int(node.StartPosition().Row) + 1
 
 	// Special handling for lexical_declaration (export const/let/var)
 	if nodeType == "lexical_declaration" {
-		return extractLexicalDecl(node, source, line)
+		return extractLexicalDecl(node, source, line, includeRanges)
 	}
 
 	// Special handling for Python module-level assignments
 	if nodeType == "expression_statement" {
-		return extractPythonAssignment(node, source, line)
+		return extractPythonAssignment(node, source, line, includeRanges)
 	}
 
 	// Get the name
@@ -294,10 +309,10 @@ func extractSymbolFromNode(node *tree_sitter.Node, source []byte, langName, node
 		name = name + "(" + params + ")"
 	}
 
-	return Symbol{Name: name, Kind: kind, Line: line}
+	return symbolWithRange(name, kind, line, node, includeRanges)
 }
 
-func extractPythonAssignment(node *tree_sitter.Node, source []byte, line int) Symbol {
+func extractPythonAssignment(node *tree_sitter.Node, source []byte, line int, includeRanges bool) Symbol {
 	// Look for assignment child: expression_statement > assignment > identifier
 	childCount := node.ChildCount()
 	for i := uint(0); i < childCount; i++ {
@@ -319,12 +334,12 @@ func extractPythonAssignment(node *tree_sitter.Node, source []byte, line int) Sy
 		if name == strings.ToUpper(name) && len(name) > 1 {
 			kind = "constant"
 		}
-		return Symbol{Name: name, Kind: kind, Line: line}
+		return symbolWithRange(name, kind, line, child, includeRanges)
 	}
 	return Symbol{}
 }
 
-func extractLexicalDecl(node *tree_sitter.Node, source []byte, line int) Symbol {
+func extractLexicalDecl(node *tree_sitter.Node, source []byte, line int, includeRanges bool) Symbol {
 	// Get the declaration keyword (const/let/var)
 	keyword := "const"
 	firstChild := node.Child(0)
@@ -346,7 +361,7 @@ func extractLexicalDecl(node *tree_sitter.Node, source []byte, line int) Symbol 
 				if parent != nil && parent.Kind() == "export_statement" {
 					kind = "export " + keyword
 				}
-				return Symbol{Name: name, Kind: kind, Line: line}
+				return symbolWithRange(name, kind, line, child, includeRanges)
 			}
 		}
 	}
@@ -559,6 +574,11 @@ func extractSvelteScript(content []byte) []byte {
 // ExtractSymbolsTreeSitter extracts symbols using tree-sitter for the given extension.
 // Returns nil if the language is not supported by tree-sitter.
 func ExtractSymbolsTreeSitter(ext string, content []byte) []Symbol {
+	return ExtractSymbolsTreeSitterWithOptions(ext, content, ExtractionOptions{})
+}
+
+// ExtractSymbolsTreeSitterWithOptions extracts symbols using tree-sitter with optional range metadata.
+func ExtractSymbolsTreeSitterWithOptions(ext string, content []byte, opts ExtractionOptions) []Symbol {
 	langName, ok := tsExtMap[ext]
 	if !ok {
 		return nil
@@ -573,7 +593,7 @@ func ExtractSymbolsTreeSitter(ext string, content []byte) []Symbol {
 		content = script
 	}
 
-	return extractTreeSitter(content, langName)
+	return extractTreeSitter(content, langName, opts.IncludeRanges)
 }
 
 // HasTreeSitter returns true if tree-sitter extraction is available for this extension.

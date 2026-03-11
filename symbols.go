@@ -12,9 +12,13 @@ import (
 
 // Symbol represents a top-level declaration in a source file.
 type Symbol struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-	Line int    `json:"line"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	Line      int    `json:"line"`
+	StartLine *int   `json:"start_line,omitempty"`
+	EndLine   *int   `json:"end_line,omitempty"`
+	StartCol  *int   `json:"start_col,omitempty"`
+	EndCol    *int   `json:"end_col,omitempty"`
 }
 
 // SymbolResult holds extraction results for a single file.
@@ -23,6 +27,10 @@ type SymbolResult struct {
 	Lines   int      `json:"lines,omitempty"`
 	Symbols []Symbol `json:"symbols"`
 	Error   string   `json:"error,omitempty"`
+}
+
+type ExtractionOptions struct {
+	IncludeRanges bool
 }
 
 // Python: extract via regex on def/class lines
@@ -201,12 +209,16 @@ func extractSymbolsBash(content string) []Symbol {
 // Prefers tree-sitter for richer output (function signatures with args),
 // falls back to regex if tree-sitter is unavailable for a language.
 func ExtractSymbols(filePath, content string) SymbolResult {
+	return ExtractSymbolsWithOptions(filePath, content, ExtractionOptions{})
+}
+
+func ExtractSymbolsWithOptions(filePath, content string, opts ExtractionOptions) SymbolResult {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	lines := strings.Count(content, "\n") + 1
 
 	// Try tree-sitter first for richer extraction
 	if HasTreeSitter(ext) {
-		symbols := ExtractSymbolsTreeSitter(ext, []byte(content))
+		symbols := ExtractSymbolsTreeSitterWithOptions(ext, []byte(content), opts)
 		if symbols != nil {
 			return SymbolResult{File: filePath, Lines: lines, Symbols: symbols}
 		}
@@ -250,15 +262,24 @@ func ExtractSymbols(filePath, content string) SymbolResult {
 
 // ReadAndExtractSymbols reads a file and extracts symbols.
 func ReadAndExtractSymbols(filePath string) SymbolResult {
+	return ReadAndExtractSymbolsWithOptions(filePath, ExtractionOptions{})
+}
+
+func ReadAndExtractSymbolsWithOptions(filePath string, opts ExtractionOptions) SymbolResult {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return SymbolResult{File: filePath, Error: err.Error(), Symbols: []Symbol{}}
 	}
-	return ExtractSymbols(filePath, string(data))
+	return ExtractSymbolsWithOptions(filePath, string(data), opts)
 }
 
 // ExtractSymbolsParallel processes multiple files concurrently.
 func ExtractSymbolsParallel(files []string) []SymbolResult {
+	return ExtractSymbolsParallelWithOptions(files, ExtractionOptions{})
+}
+
+// ExtractSymbolsParallelWithOptions processes multiple files concurrently with extraction options.
+func ExtractSymbolsParallelWithOptions(files []string, opts ExtractionOptions) []SymbolResult {
 	results := make([]SymbolResult, len(files))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 32) // limit concurrency
@@ -268,7 +289,7 @@ func ExtractSymbolsParallel(files []string) []SymbolResult {
 		go func(idx int, path string) {
 			defer wg.Done()
 			sem <- struct{}{}
-			results[idx] = ReadAndExtractSymbols(path)
+			results[idx] = ReadAndExtractSymbolsWithOptions(path, opts)
 			<-sem
 		}(i, f)
 	}

@@ -179,7 +179,7 @@ func cmdList(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "syms list - Extract top-level symbols from files")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--pretty] [--count] [--filter KIND[,KIND...]] <paths...>")
+		fmt.Fprintln(os.Stderr, "Usage: syms list [-r] [--json] [--pretty] [--ranges] [--count] [--filter KIND[,KIND...]] <paths...>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -187,6 +187,7 @@ func cmdList(args []string) {
 	recursive := fs.Bool("r", false, "Recursive directory scan")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
+	ranges := fs.Bool("ranges", false, "Include symbol range metadata (start/end line/column)")
 	count := fs.Bool("count", false, "Print symbol count instead of symbols")
 	var filters stringListFlag
 	fs.Var(&filters, "filter", "Filter symbols by kind (repeatable or comma-separated)")
@@ -202,7 +203,7 @@ func cmdList(args []string) {
 		os.Exit(1)
 	}
 
-	results := filterSymbolResultsByKind(ExtractSymbolsParallel(files), []string(filters))
+	results := filterSymbolResultsByKind(ExtractSymbolsParallelWithOptions(files, ExtractionOptions{IncludeRanges: *ranges}), []string(filters))
 	if *count {
 		if *jsonOut {
 			type CountResult struct {
@@ -433,12 +434,13 @@ func cmdSearch(args []string) {
 	root := fs.String("root", "", "Project root (auto-detected if omitted)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
+	ranges := fs.Bool("ranges", false, "Include symbol range metadata (start/end line/column)")
 	var filters stringListFlag
 	fs.Var(&filters, "filter", "Filter symbols by kind (repeatable or comma-separated)")
 	positional := parseFlags(args, fs)
 
 	if len(positional) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: syms search [--root DIR] [--json] [--pretty] [--filter KIND[,KIND...]] <query>")
+		fmt.Fprintln(os.Stderr, "Usage: syms search [--root DIR] [--json] [--pretty] [--ranges] [--filter KIND[,KIND...]] <query>")
 		os.Exit(1)
 	}
 	query := positional[0]
@@ -448,7 +450,7 @@ func cmdSearch(args []string) {
 		searchRoot = findProjectRoot(".")
 	}
 	files := collectFiles([]string{searchRoot}, true)
-	results := SearchSymbolsWithKinds(searchRoot, files, query, []string(filters))
+	results := SearchSymbolsWithKindsAndOptions(searchRoot, files, query, []string(filters), ExtractionOptions{IncludeRanges: *ranges})
 
 	if *jsonOut {
 		printJSON(results, *pretty)

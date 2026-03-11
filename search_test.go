@@ -146,6 +146,18 @@ func TestSearchWithKindFilter(t *testing.T) {
 	}
 }
 
+func TestSearchWithRangesOptIn(t *testing.T) {
+	dir, files := setupSearchProject(t)
+	results := SearchSymbolsWithKindsAndOptions(dir, files, "User", []string{"class"}, ExtractionOptions{IncludeRanges: true})
+	if len(results) == 0 {
+		t.Fatal("expected search results")
+	}
+	s := results[0].Symbol
+	if s.StartLine == nil || s.EndLine == nil {
+		t.Fatalf("expected range fields, got %+v", s)
+	}
+}
+
 func TestFormatSearchText(t *testing.T) {
 	results := []SearchResult{
 		{File: "app.py", Symbol: Symbol{Name: "foo", Kind: "def", Line: 1}},

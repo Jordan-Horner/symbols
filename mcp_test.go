@@ -264,6 +264,31 @@ func TestHandleSearchKindFilter(t *testing.T) {
 	}
 }
 
+func TestHandleListIncludeRanges(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "test.go")
+	os.WriteFile(f, []byte("package main\nfunc main() {}\n"), 0644)
+
+	args, _ := json.Marshal(map[string]interface{}{
+		"paths":          []string{f},
+		"include_ranges": true,
+	})
+	result := handleToolCall("syms_list", args)
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	var results []SymbolResult
+	decodeStructured(t, result, &results)
+	if len(results) != 1 || len(results[0].Symbols) == 0 {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+	s := results[0].Symbols[0]
+	if s.StartLine == nil || s.EndLine == nil || s.StartCol == nil || s.EndCol == nil {
+		t.Fatalf("expected range fields in symbol, got %+v", s)
+	}
+}
+
 func TestHandleInvalidArgs(t *testing.T) {
 	result := handleToolCall("syms_list", []byte(`{invalid json`))
 	if !result.IsError {

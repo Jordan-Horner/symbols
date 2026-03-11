@@ -123,6 +123,9 @@ syms list --json app.py
 # Pretty JSON output (human-readable)
 syms list --json --pretty app.py
 
+# Optional: include precise symbol ranges
+syms list --json --ranges app.py
+
 # Count symbols per file
 syms list --count src/
 
@@ -278,6 +281,9 @@ syms search --root /path/to/project Config
 
 # Search only specific symbol kinds
 syms search --filter class User
+
+# Optional: include precise symbol ranges in search results
+syms search --json --ranges User
 ```
 
 **Output:**
@@ -311,6 +317,7 @@ Exposes all functionality as MCP tools over stdio (JSON-RPC 2.0):
 | `syms_graph` | Project dependency graph |
 
 `syms_list` and `syms_search` accept optional `kinds: string[]` arguments to filter symbol kinds.
+`syms_list` and `syms_search` also accept optional `include_ranges: boolean` for start/end line+column metadata.
 Tool results are returned in `structuredContent` (not JSON text blobs in `content[].text`).
 
 **Claude Code configuration** (`~/.claude.json`):

@@ -357,3 +357,29 @@ func TestExtractSymbolsParallel(t *testing.T) {
 		t.Errorf("expected 0 results, got %d", len(results))
 	}
 }
+
+func TestExtractSymbolsWithRangesOptIn(t *testing.T) {
+	content := "func main() {}\n"
+
+	withRanges := ExtractSymbolsWithOptions("test.go", content, ExtractionOptions{IncludeRanges: true})
+	if len(withRanges.Symbols) == 0 {
+		t.Fatal("expected symbols")
+	}
+	s := withRanges.Symbols[0]
+	if s.StartLine == nil || s.EndLine == nil || s.StartCol == nil || s.EndCol == nil {
+		t.Fatalf("expected range fields, got %+v", s)
+	}
+}
+
+func TestExtractSymbolsWithoutRangesByDefault(t *testing.T) {
+	content := "func main() {}\n"
+
+	withoutRanges := ExtractSymbols("test.go", content)
+	if len(withoutRanges.Symbols) == 0 {
+		t.Fatal("expected symbols")
+	}
+	s := withoutRanges.Symbols[0]
+	if s.StartLine != nil || s.EndLine != nil || s.StartCol != nil || s.EndCol != nil {
+		t.Fatalf("expected no range fields by default, got %+v", s)
+	}
+}
