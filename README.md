@@ -4,6 +4,10 @@ A fast, polyglot source code intelligence CLI. Extract symbols, parse imports, t
 
 No language server required. No build step for your projects. Just point it at your code.
 
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCPAmpel](https://img.shields.io/endpoint?url=https://mcpampel.com/badge/Jordan-Horner/symbols.json)](https://mcpampel.com/repo/Jordan-Horner/symbols)
+
 <a href="https://glama.ai/mcp/servers/Jordan-Horner/symbols">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/Jordan-Horner/symbols/badge" alt="symbols MCP server" />
 </a>
