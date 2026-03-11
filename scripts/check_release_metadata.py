@@ -44,10 +44,14 @@ def main() -> None:
     if expected_prefix not in identifier:
         fail(f"packages[0].identifier does not include {expected_prefix}: {identifier}")
 
-    if not identifier.endswith("syms_darwin_arm64.tar.gz"):
+    allowed_suffixes = (
+        "syms_darwin_arm64.tar.gz",
+        "syms-mcp_darwin_arm64.tar.gz",
+    )
+    if not identifier.endswith(allowed_suffixes):
         fail(
-            "packages[0].identifier must target syms_darwin_arm64.tar.gz "
-            f"(got: {identifier})"
+            "packages[0].identifier must target one of "
+            f"{', '.join(allowed_suffixes)} (got: {identifier})"
         )
 
     sha = pkg.get("fileSha256", "")
