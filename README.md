@@ -21,9 +21,6 @@ symbols graph .                  # project-wide dependency summary
 git clone https://github.com/Jordan-Horner/symbols.git
 cd symbols
 go build -o symbols .
-
-# Add to PATH (optional)
-echo 'export PATH="$HOME/Projects/symbols:$PATH"' >> ~/.zshrc
 ```
 
 **Requirements:** Go 1.21+
