@@ -90,6 +90,9 @@ syms list -r src/
 # JSON output (for piping to other tools)
 syms list --json app.py
 
+# Count symbols per file
+syms list --count src/
+
 # Filter by symbol kind (repeatable or comma-separated)
 syms list --filter class src/
 syms list --filter class,function src/
@@ -259,7 +262,7 @@ Run `syms` as an MCP server for AI tool integration (e.g. Claude Code):
 syms mcp
 ```
 
-Exposes all functionality as structured MCP tools over stdio (JSON-RPC 2.0):
+Exposes all functionality as MCP tools over stdio (JSON-RPC 2.0):
 
 | Tool | Description |
 |---|---|
@@ -272,6 +275,7 @@ Exposes all functionality as structured MCP tools over stdio (JSON-RPC 2.0):
 | `syms_graph` | Project dependency graph |
 
 `syms_list` and `syms_search` accept optional `kinds: string[]` arguments to filter symbol kinds.
+Tool results are returned in `structuredContent` (not JSON text blobs in `content[].text`).
 
 **Claude Code configuration** (`~/.claude.json`):
 
