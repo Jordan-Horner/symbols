@@ -451,6 +451,17 @@ func extractParams(node *tree_sitter.Node, source []byte, langName, nodeType str
 func extractParamName(node *tree_sitter.Node, source []byte, langName string) string {
 	kind := node.Kind()
 
+	// Go: parameter_declaration has multiple name identifiers (x, y int).
+	// ChildByFieldName("name") only returns the first, so handle Go before
+	// the generic "name" field shortcut.
+	if langName == "go" {
+		names := collectGoParamNames(node, source)
+		if len(names) > 0 {
+			return strings.Join(names, ", ")
+		}
+		return ""
+	}
+
 	// Try "name" field first
 	nameNode := node.ChildByFieldName("name")
 	if nameNode != nil {
@@ -466,14 +477,6 @@ func extractParamName(node *tree_sitter.Node, source []byte, langName string) st
 		}
 		// For typed_parameter, default_parameter — get the first identifier child
 		return firstIdentifier(node, source)
-
-	case "go":
-		// Go: parameter_declaration has name(s) + type
-		// Get all identifiers before the type
-		names := collectGoParamNames(node, source)
-		if len(names) > 0 {
-			return strings.Join(names, ", ")
-		}
 
 	case "javascript", "typescript", "tsx":
 		if kind == "identifier" || kind == "shorthand_property_identifier_pattern" {
@@ -546,28 +549,47 @@ func collectGoParamNames(node *tree_sitter.Node, source []byte) []string {
 
 // ── Svelte script extraction ────────────────────────────────────────────────
 
-// For .svelte files, extract just the <script> content and parse as TS
+// For .svelte files, extract all <script> blocks and concatenate them.
+// Svelte files can have both <script context="module"> and <script> blocks.
 func extractSvelteScript(content []byte) []byte {
 	text := string(content)
-	// Find <script ...> tag
-	scriptStart := strings.Index(text, "<script")
-	if scriptStart < 0 {
-		return nil
-	}
-	// Find end of opening tag
-	tagEnd := strings.Index(text[scriptStart:], ">")
-	if tagEnd < 0 {
-		return nil
-	}
-	scriptContentStart := scriptStart + tagEnd + 1
+	var combined []byte
+	offset := 0
 
-	// Find </script>
-	scriptEnd := strings.Index(text[scriptContentStart:], "</script>")
-	if scriptEnd < 0 {
-		return nil
+	for {
+		// Find next <script...> tag
+		scriptStart := strings.Index(text[offset:], "<script")
+		if scriptStart < 0 {
+			break
+		}
+		scriptStart += offset
+
+		// Find end of opening tag
+		tagEnd := strings.Index(text[scriptStart:], ">")
+		if tagEnd < 0 {
+			break
+		}
+		scriptContentStart := scriptStart + tagEnd + 1
+
+		// Find </script>
+		scriptEnd := strings.Index(text[scriptContentStart:], "</script>")
+		if scriptEnd < 0 {
+			break
+		}
+
+		block := text[scriptContentStart : scriptContentStart+scriptEnd]
+		if len(combined) > 0 {
+			combined = append(combined, '\n')
+		}
+		combined = append(combined, []byte(block)...)
+
+		offset = scriptContentStart + scriptEnd + len("</script>")
 	}
 
-	return []byte(text[scriptContentStart : scriptContentStart+scriptEnd])
+	if len(combined) == 0 {
+		return nil
+	}
+	return combined
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
