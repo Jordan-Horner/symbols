@@ -77,6 +77,8 @@ syms mcp                      # run as MCP server for AI tools
 
 ## Install
 
+### Option 1: Build from source
+
 ```sh
 git clone https://github.com/Jordan-Horner/symbols.git
 cd symbols
@@ -85,6 +87,27 @@ sudo mv syms /usr/local/bin/
 ```
 
 **Requirements:** Go 1.26+
+
+### Option 2: Direct installation (Linux/macOS)
+
+```sh
+# Install directly to /usr/local/bin
+curl -L https://github.com/Jordan-Horner/symbols/releases/latest/download/syms-$(uname -s)-$(uname -m) -o /usr/local/bin/syms
+chmod +x /usr/local/bin/syms
+```
+
+### Option 3: Homebrew (macOS)
+
+```sh
+brew tap Jordan-Horner/tap
+brew install syms
+```
+
+### Verify installation
+
+```sh
+syms --version
+```
 
 ## Language support
 
@@ -324,19 +347,46 @@ Exposes all functionality as MCP tools over stdio (JSON-RPC 2.0):
 `syms_list` and `syms_search` also accept optional `include_ranges: boolean` for start/end line+column metadata.
 Tool results are returned in `structuredContent` (not JSON text blobs in `content[].text`).
 
-**Claude Code configuration** (`~/.claude.json`):
+### Claude Code setup
+
+After installing `syms`, configure it as an MCP server:
+
+**Project-level** (recommended for teams):
+
+Create `.mcp.json` in your project root:
 
 ```json
 {
   "mcpServers": {
-    "syms": {
-      "type": "stdio",
+    "symbols": {
       "command": "syms",
       "args": ["mcp"]
     }
   }
 }
 ```
+
+Commit this file so your team gets the symbols server automatically.
+
+**Global (all projects)**:
+
+Create or edit `~/.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "symbols": {
+      "command": "syms",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+After configuration:
+1. Restart Claude Code
+2. When prompted, approve the `symbols` MCP server
+3. Claude Code will now have access to code intelligence tools in all your projects
 
 ## How it works
 
