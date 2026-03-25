@@ -14,8 +14,12 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates libc6 \
   && rm -rf /var/lib/apt/lists/*
 
+RUN useradd -r -u 1000 -s /bin/false appuser
+
 WORKDIR /app
 COPY --from=builder /out/syms /usr/local/bin/syms
+
+USER appuser
 
 # Default to MCP stdio mode for server inspection and runtime use.
 ENTRYPOINT ["/usr/local/bin/syms"]
