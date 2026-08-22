@@ -66,12 +66,41 @@ func extractImportsPython(content string) []Import {
 
 		if strings.Contains(namesStr, "(") && !strings.Contains(namesStr, ")") {
 			restStart := m[1]
-			parenEnd := strings.Index(content[restStart:], ")")
+			remaining := content[restStart:]
+			// Track paren depth so that ) inside comments (e.g. # note (x))
+			// doesn't terminate the import prematurely.
+			depth := strings.Count(namesStr, "(") - strings.Count(namesStr, ")")
+			parenEnd := -1
+			for i, ch := range remaining {
+				if ch == '(' {
+					depth++
+				} else if ch == ')' {
+					depth--
+					if depth == 0 {
+						parenEnd = i
+						break
+					}
+				}
+			}
 			if parenEnd >= 0 {
-				namesStr = namesStr + content[restStart:restStart+parenEnd]
+				namesStr = namesStr + remaining[:parenEnd]
 			}
 		}
 		namesStr = strings.Trim(namesStr, "() \t")
+
+		// Strip inline # comments from each line before splitting on commas.
+		// Without this, "bar,  # some comment\nbaz" produces a name containing
+		// the comment text rather than two names "bar" and "baz".
+		if strings.Contains(namesStr, "#") {
+			var cleanLines []string
+			for _, l := range strings.Split(namesStr, "\n") {
+				if idx := strings.Index(l, "#"); idx >= 0 {
+					l = l[:idx]
+				}
+				cleanLines = append(cleanLines, l)
+			}
+			namesStr = strings.Join(cleanLines, " ")
+		}
 
 		var names []string
 		for _, n := range strings.Split(namesStr, ",") {
@@ -122,6 +151,12 @@ func extractImportsTS(content string) []Import {
 			if !seen[module] {
 				seen[module] = true
 				line := strings.Count(content[:m[0]], "\n") + 1
+				// (?:^|\n) regexes match the leading newline as part of the pattern.
+				// When that happens m[0] points to the \n, so the import is actually
+				// on the next line.
+				if m[0] < len(content) && content[m[0]] == '\n' {
+					line++
+				}
 				imports = append(imports, Import{Module: module, Kind: pk.kind, Line: line})
 			}
 		}

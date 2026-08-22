@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func setupTestProject(t *testing.T) (string, []string) {
@@ -383,5 +384,62 @@ func TestResolveImportDispatch(t *testing.T) {
 	result := idx.ResolveImport(".txt", "something", "import", "test.txt")
 	if result != "" {
 		t.Errorf("expected empty for unsupported ext, got %q", result)
+	}
+}
+
+// Bug: json.Unmarshal fails on tsconfig.json with // comments, so path aliases
+// were never loaded for the vast majority of TypeScript projects.
+func TestResolveTSConfigWithComments(t *testing.T) {
+	dir := t.TempDir()
+
+	tsconfig := `{
+  // Project-wide TypeScript configuration
+  "compilerOptions": {
+    "baseUrl": ".",
+    // Path aliases for clean imports
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  }
+}`
+	os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte(tsconfig), 0644)
+
+	srcFile := filepath.Join(dir, "src", "utils.ts")
+	os.MkdirAll(filepath.Dir(srcFile), 0755)
+	os.WriteFile(srcFile, []byte(""), 0644)
+
+	idx := NewProjectIndex(dir, []string{srcFile})
+	if len(idx.tsAliases) == 0 {
+		t.Fatal("path aliases not loaded — tsconfig with comments was not parsed")
+	}
+	result := idx.ResolveTS("@/utils", filepath.Join(dir, "src", "app.ts"))
+	if result != srcFile {
+		t.Errorf("got %q, want %q", result, srcFile)
+	}
+}
+
+// Bug: parseTSConfig called itself recursively with no visited-path guard,
+// so a circular extends chain (A→B→A) caused infinite recursion.
+func TestResolveTSConfigCircularExtends(t *testing.T) {
+	dir := t.TempDir()
+
+	// a.json extends b.json, b.json extends a.json
+	aContent := `{"extends": "./b.json", "compilerOptions": {"paths": {}}}`
+	bContent := `{"extends": "./a.json", "compilerOptions": {"paths": {}}}`
+	os.WriteFile(filepath.Join(dir, "a.json"), []byte(aContent), 0644)
+	os.WriteFile(filepath.Join(dir, "b.json"), []byte(bContent), 0644)
+
+	// Must return without hanging or panicking.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		parseTSConfig(dir, filepath.Join(dir, "a.json"))
+	}()
+
+	select {
+	case <-done:
+		// OK — returned without infinite recursion
+	case <-time.After(2 * time.Second):
+		t.Fatal("parseTSConfig hung on circular extends — infinite recursion detected")
 	}
 }

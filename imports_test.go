@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -281,6 +282,72 @@ func TestFormatImportsText(t *testing.T) {
 	out := FormatImportsText(r)
 	if out == "" {
 		t.Error("expected non-empty output")
+	}
+}
+
+// Bug: multi-line import with ) inside a comment terminated parsing too early.
+func TestExtractImportsPythonParenInComment(t *testing.T) {
+	content := `from foo import (
+    bar,  # some (inline) comment
+    baz
+)
+`
+	imports := extractImportsPython(content)
+	var fooImport *Import
+	for i := range imports {
+		if imports[i].Module == "foo" {
+			fooImport = &imports[i]
+			break
+		}
+	}
+	if fooImport == nil {
+		t.Fatal("expected import from foo")
+	}
+	names := make(map[string]bool)
+	for _, n := range fooImport.Names {
+		names[n] = true
+	}
+	if !names["bar"] {
+		t.Errorf("missing 'bar' in names: %v", fooImport.Names)
+	}
+	if !names["baz"] {
+		t.Errorf("missing 'baz' in names: %v", fooImport.Names)
+	}
+	for _, n := range fooImport.Names {
+		if strings.Contains(n, "#") || strings.Contains(n, "comment") || strings.Contains(n, "inline") {
+			t.Errorf("comment text leaked into import name: %q", n)
+		}
+	}
+}
+
+// Bug: tsImportRe uses (?m)(?:^|\n) so the first match starts at ^ (correct line)
+// but subsequent matches start at the \n before the line, making m[0] point to the
+// newline and causing strings.Count(content[:m[0]], "\n")+1 to be off by one.
+func TestExtractImportsTSLineNumbers(t *testing.T) {
+	content := "import React from 'react'\nimport { useState } from 'react'\n"
+	imports := extractImportsTS(content)
+	// Both are deduplicated to "react" so only 1 import expected.
+	// The important thing is line 1 is reported as 1, not 0.
+	if len(imports) != 1 {
+		t.Fatalf("got %d imports, want 1", len(imports))
+	}
+	if imports[0].Line != 1 {
+		t.Errorf("line = %d, want 1", imports[0].Line)
+	}
+}
+
+func TestExtractImportsTSSecondImportLineNumber(t *testing.T) {
+	content := "import React from 'react'\nimport { foo } from './foo'\n"
+	imports := extractImportsTS(content)
+	lineMap := make(map[string]int)
+	for _, imp := range imports {
+		lineMap[imp.Module] = imp.Line
+	}
+	if lineMap["react"] != 1 {
+		t.Errorf("react line = %d, want 1", lineMap["react"])
+	}
+	if lineMap["./foo"] != 2 {
+		t.Errorf("./foo line = %d, want 2", lineMap["./foo"])
 	}
 }
 

@@ -149,7 +149,58 @@ func loadTSPathAliases(root string) []tsPathAlias {
 	return nil
 }
 
+// stripJSONC removes // line comments from JSON-with-comments content.
+// It correctly skips // sequences inside string literals.
+func stripJSONC(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	inString := false
+	escaped := false
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+		if escaped {
+			out = append(out, ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			out = append(out, ch)
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			out = append(out, ch)
+			continue
+		}
+		if !inString && i+1 < len(data) && ch == '/' && data[i+1] == '/' {
+			// Skip to end of line
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			if i < len(data) {
+				out = append(out, data[i]) // keep the newline
+			}
+			continue
+		}
+		out = append(out, ch)
+	}
+	return out
+}
+
 func parseTSConfig(root, configPath string) []tsPathAlias {
+	return parseTSConfigVisited(root, configPath, make(map[string]bool))
+}
+
+func parseTSConfigVisited(root, configPath string, visited map[string]bool) []tsPathAlias {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		absPath = configPath
+	}
+	if visited[absPath] {
+		return nil // circular extends — stop recursion
+	}
+	visited[absPath] = true
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil
@@ -162,7 +213,7 @@ func parseTSConfig(root, configPath string) []tsPathAlias {
 			Paths   map[string][]string `json:"paths"`
 		} `json:"compilerOptions"`
 	}
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &config); err != nil {
 		return nil
 	}
 
@@ -177,7 +228,7 @@ func parseTSConfig(root, configPath string) []tsPathAlias {
 		if filepath.Ext(parentPath) == "" {
 			parentPath += ".json"
 		}
-		aliases = parseTSConfig(root, parentPath)
+		aliases = parseTSConfigVisited(root, parentPath, visited)
 	}
 
 	if len(config.CompilerOptions.Paths) == 0 {
