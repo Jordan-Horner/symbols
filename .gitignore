@@ -2,3 +2,7 @@
 symbols
 syms
 dist/
+
+# Local registry credentials and release bundles
+.mcpregistry_*_token
+/syms-mcp_*.tar.gz
