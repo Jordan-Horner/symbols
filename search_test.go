@@ -158,6 +158,40 @@ func TestSearchWithRangesOptIn(t *testing.T) {
 	}
 }
 
+// Kind filter normalization: "function" should match "async def", "async function", "export function".
+func TestSearchKindFilterNormalization(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.py"), []byte("async def fetch(): pass\ndef helper(): pass\n"), 0644)
+	files := []string{filepath.Join(dir, "a.py")}
+
+	results := SearchSymbolsWithKinds(dir, files, "fetch", []string{"def"})
+	if len(results) == 0 {
+		t.Fatal("filter 'def' should match 'async def'")
+	}
+}
+
+func TestFilterKindMatchesAsyncFunction(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.js"), []byte("async function load() {}\nfunction save() {}\n"), 0644)
+	files := []string{filepath.Join(dir, "a.js")}
+
+	results := SearchSymbolsWithKinds(dir, files, "load", []string{"function"})
+	if len(results) == 0 {
+		t.Fatal("filter 'function' should match 'async function'")
+	}
+}
+
+func TestFilterKindMatchesExportFunction(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.ts"), []byte("export function greet() {}\n"), 0644)
+	files := []string{filepath.Join(dir, "a.ts")}
+
+	results := SearchSymbolsWithKinds(dir, files, "greet", []string{"function"})
+	if len(results) == 0 {
+		t.Fatal("filter 'function' should match 'export function'")
+	}
+}
+
 func TestFormatSearchText(t *testing.T) {
 	results := []SearchResult{
 		{File: "app.py", Symbol: Symbol{Name: "foo", Kind: "def", Line: 1}},

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // Symbol represents a top-level declaration in a source file.
@@ -15,6 +16,7 @@ type Symbol struct {
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
 	Line      int    `json:"line"`
+	Exported  *bool  `json:"exported,omitempty"`
 	StartLine *int   `json:"start_line,omitempty"`
 	EndLine   *int   `json:"end_line,omitempty"`
 	StartCol  *int   `json:"start_col,omitempty"`
@@ -188,6 +190,38 @@ func extractSymbolsPHP(content string) []Symbol {
 	return symbols
 }
 
+// C/C++: fallback for when tree-sitter is unavailable.
+// Limited to common primitives for return types to avoid false positives;
+// tree-sitter handles richer C/C++ extraction correctly.
+var cFuncRe = regexp.MustCompile(`^(?:(?:static|extern|inline)\s+)*` +
+	`(?:(?:const|volatile|unsigned|signed|long|short)\s+)*` +
+	`(?:void|int|char|long|short|float|double|bool|size_t)\s*\*?\s*` +
+	`(\w+)\s*\(`)
+var cTypeRe = regexp.MustCompile(`^(?:typedef\s+)?(?:(struct|enum|union))\s+(\w+)`)
+var cppClassRe = regexp.MustCompile(`^(?:template\s*<[^>]*>\s*)?class\s+(\w+)`)
+
+func extractSymbolsC(content string) []Symbol {
+	var symbols []Symbol
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	lineno := 0
+	for scanner.Scan() {
+		lineno++
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		if m := cTypeRe.FindStringSubmatch(trimmed); m != nil {
+			symbols = append(symbols, Symbol{Name: m[2], Kind: m[1], Line: lineno})
+		} else if m := cppClassRe.FindStringSubmatch(trimmed); m != nil {
+			symbols = append(symbols, Symbol{Name: m[1], Kind: "class", Line: lineno})
+		} else if m := cFuncRe.FindStringSubmatch(trimmed); m != nil {
+			symbols = append(symbols, Symbol{Name: m[1], Kind: "function", Line: lineno})
+		}
+	}
+	return symbols
+}
+
 // Bash: function declarations
 var bashFuncRe = regexp.MustCompile(`^(?:function\s+)?(\w+)\s*\(\s*\)`)
 
@@ -246,7 +280,7 @@ func ExtractSymbolsWithOptions(filePath, content string, opts ExtractionOptions)
 	case ".sh", ".bash":
 		symbols = extractSymbolsBash(content)
 	case ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp":
-		symbols = extractSymbolsRust(content)
+		symbols = extractSymbolsC(content)
 	case ".rb", ".scala", ".swift":
 		// These only work with tree-sitter, no regex fallback
 		return SymbolResult{File: filePath, Lines: lines, Symbols: []Symbol{}}
@@ -271,6 +305,37 @@ func ReadAndExtractSymbolsWithOptions(filePath string, opts ExtractionOptions) S
 		return SymbolResult{File: filePath, Error: err.Error(), Symbols: []Symbol{}}
 	}
 	return ExtractSymbolsWithOptions(filePath, string(data), opts)
+}
+
+// ReadAndExtractWithExports reads a file, extracts symbols, and marks exports.
+func ReadAndExtractWithExports(filePath string, opts ExtractionOptions) SymbolResult {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return SymbolResult{File: filePath, Error: err.Error(), Symbols: []Symbol{}}
+	}
+	content := string(data)
+	result := ExtractSymbolsWithOptions(filePath, content, opts)
+	MarkExports(&result, content)
+	return result
+}
+
+// ExtractSymbolsParallelWithExports processes files concurrently and marks export visibility.
+func ExtractSymbolsParallelWithExports(files []string, opts ExtractionOptions) []SymbolResult {
+	results := make([]SymbolResult, len(files))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 32)
+
+	for i, f := range files {
+		wg.Add(1)
+		go func(idx int, path string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			results[idx] = ReadAndExtractWithExports(path, opts)
+			<-sem
+		}(i, f)
+	}
+	wg.Wait()
+	return results
 }
 
 // ExtractSymbolsParallel processes multiple files concurrently.
@@ -301,6 +366,22 @@ func normalizeKind(kind string) string {
 	return strings.ToLower(strings.TrimSpace(kind))
 }
 
+// baseKind returns the terminal word of a compound kind so that filters like
+// "function" match compound kinds like "async function", "export function", etc.
+func baseKind(kind string) string {
+	if i := strings.LastIndex(kind, " "); i >= 0 {
+		return kind[i+1:]
+	}
+	return kind
+}
+
+func symbolBaseName(name string) string {
+	if idx := strings.Index(name, "("); idx >= 0 {
+		return name[:idx]
+	}
+	return name
+}
+
 func buildKindSet(kinds []string) map[string]bool {
 	set := make(map[string]bool)
 	for _, raw := range kinds {
@@ -320,7 +401,8 @@ func filterSymbolsByKind(symbols []Symbol, kindSet map[string]bool) []Symbol {
 	}
 	filtered := make([]Symbol, 0, len(symbols))
 	for _, s := range symbols {
-		if kindSet[normalizeKind(s.Kind)] {
+		norm := normalizeKind(s.Kind)
+		if kindSet[norm] || kindSet[baseKind(norm)] {
 			filtered = append(filtered, s)
 		}
 	}
@@ -336,6 +418,222 @@ func filterSymbolResultsByKind(results []SymbolResult, kinds []string) []SymbolR
 	for i, r := range results {
 		filtered[i] = r
 		filtered[i].Symbols = filterSymbolsByKind(r.Symbols, kindSet)
+	}
+	return filtered
+}
+
+// ── Export detection ─────────────────────────────────────────────────────────
+
+var pyAllRe = regexp.MustCompile(`(?m)^__all__\s*=\s*\[([^\]]*)\]`)
+var cjsModuleObjectRe = regexp.MustCompile(`(?s)module\.exports\s*=\s*\{([^}]*)\}`)
+var cjsNamedExportRe = regexp.MustCompile(`(?m)(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=`)
+var cjsModuleDefaultRe = regexp.MustCompile(`(?m)module\.exports\s*=\s*([A-Za-z_$][\w$]*)\s*;?`)
+var cjsIdentifierRe = regexp.MustCompile(`[A-Za-z_$][\w$]*`)
+
+func boolPtr(b bool) *bool { return &b }
+
+// MarkExports annotates each symbol with Exported based on language visibility rules.
+func MarkExports(result *SymbolResult, content string) {
+	ext := strings.ToLower(filepath.Ext(result.File))
+
+	switch ext {
+	case ".py":
+		markExportsPython(result, content)
+	case ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".svelte":
+		markExportsTS(result, content)
+	case ".go":
+		markExportsGo(result)
+	case ".rs":
+		markExportsRust(result, content)
+	case ".java", ".kt", ".kts":
+		markExportsJava(result, content)
+	case ".cs":
+		markExportsCSharp(result, content)
+	case ".php":
+		markExportsPHP(result, content)
+	default:
+		// No export rules for this language — mark all as exported
+		for i := range result.Symbols {
+			result.Symbols[i].Exported = boolPtr(true)
+		}
+	}
+}
+
+func markExportsPython(result *SymbolResult, content string) {
+	// If __all__ is defined, only those names are exported
+	allMatch := pyAllRe.FindStringSubmatch(content)
+	if allMatch != nil {
+		allNames := make(map[string]bool)
+		for _, name := range strings.Split(allMatch[1], ",") {
+			name = strings.TrimSpace(name)
+			name = strings.Trim(name, `"'`)
+			if name != "" {
+				allNames[name] = true
+			}
+		}
+		for i := range result.Symbols {
+			baseName := symbolBaseName(result.Symbols[i].Name)
+			result.Symbols[i].Exported = boolPtr(allNames[baseName])
+		}
+		return
+	}
+	// No __all__: public = not starting with underscore
+	for i := range result.Symbols {
+		baseName := symbolBaseName(result.Symbols[i].Name)
+		result.Symbols[i].Exported = boolPtr(!strings.HasPrefix(baseName, "_"))
+	}
+}
+
+func markExportsTS(result *SymbolResult, content string) {
+	lines := strings.Split(content, "\n")
+	commonJSExports := commonJSExportNames(content)
+	for i := range result.Symbols {
+		kind := result.Symbols[i].Kind
+		if strings.HasPrefix(kind, "export") {
+			result.Symbols[i].Exported = boolPtr(true)
+			continue
+		}
+		baseName := symbolBaseName(result.Symbols[i].Name)
+		if commonJSExports[baseName] {
+			result.Symbols[i].Exported = boolPtr(true)
+			continue
+		}
+		// Tree-sitter may store the inner kind (function, class, etc.) even when
+		// wrapped in export_statement. Check the source line for "export ".
+		line := result.Symbols[i].Line
+		if line > 0 && line <= len(lines) {
+			trimmed := strings.TrimSpace(lines[line-1])
+			result.Symbols[i].Exported = boolPtr(strings.HasPrefix(trimmed, "export "))
+		} else {
+			result.Symbols[i].Exported = boolPtr(false)
+		}
+	}
+}
+
+func commonJSExportNames(content string) map[string]bool {
+	names := make(map[string]bool)
+
+	for _, match := range cjsModuleObjectRe.FindAllStringSubmatch(content, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		for _, entry := range strings.Split(match[1], ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			entry = strings.SplitN(entry, "//", 2)[0]
+			entry = strings.SplitN(entry, "/*", 2)[0]
+			entry = strings.TrimSpace(entry)
+			if entry == "" || strings.HasPrefix(entry, "...") {
+				continue
+			}
+			if colon := strings.Index(entry, ":"); colon >= 0 {
+				entry = strings.TrimSpace(entry[colon+1:])
+			}
+			if match := cjsIdentifierRe.FindString(entry); match != "" {
+				names[match] = true
+			}
+		}
+	}
+
+	for _, match := range cjsNamedExportRe.FindAllStringSubmatch(content, -1) {
+		if len(match) >= 2 {
+			names[match[1]] = true
+		}
+	}
+
+	for _, match := range cjsModuleDefaultRe.FindAllStringSubmatch(content, -1) {
+		if len(match) >= 2 && match[1] != "exports" {
+			names[match[1]] = true
+		}
+	}
+
+	return names
+}
+
+func markExportsGo(result *SymbolResult) {
+	for i := range result.Symbols {
+		name := symbolBaseName(result.Symbols[i].Name)
+		if len(name) == 0 {
+			result.Symbols[i].Exported = boolPtr(false)
+			continue
+		}
+		// Go exports are identifiers starting with an uppercase letter.
+		// Use []rune conversion so multi-byte Unicode identifiers (e.g. Ä) work.
+		first := []rune(name)[0]
+		result.Symbols[i].Exported = boolPtr(unicode.IsUpper(first))
+	}
+}
+
+func markExportsRust(result *SymbolResult, content string) {
+	// Check if the source line starts with "pub "
+	lines := strings.Split(content, "\n")
+	for i := range result.Symbols {
+		line := result.Symbols[i].Line
+		if line > 0 && line <= len(lines) {
+			trimmed := strings.TrimSpace(lines[line-1])
+			result.Symbols[i].Exported = boolPtr(strings.HasPrefix(trimmed, "pub ") || strings.HasPrefix(trimmed, "pub("))
+		} else {
+			result.Symbols[i].Exported = boolPtr(false)
+		}
+	}
+}
+
+func markExportsJava(result *SymbolResult, content string) {
+	lines := strings.Split(content, "\n")
+	for i := range result.Symbols {
+		line := result.Symbols[i].Line
+		if line > 0 && line <= len(lines) {
+			trimmed := strings.TrimSpace(lines[line-1])
+			// Java/Kotlin: public is exported; package-private (no modifier) is semi-exported
+			// For API documentation purposes, treat non-private as exported
+			result.Symbols[i].Exported = boolPtr(!strings.Contains(trimmed, "private "))
+		} else {
+			result.Symbols[i].Exported = boolPtr(true)
+		}
+	}
+}
+
+func markExportsCSharp(result *SymbolResult, content string) {
+	lines := strings.Split(content, "\n")
+	for i := range result.Symbols {
+		line := result.Symbols[i].Line
+		if line > 0 && line <= len(lines) {
+			trimmed := strings.TrimSpace(lines[line-1])
+			result.Symbols[i].Exported = boolPtr(strings.Contains(trimmed, "public ") || strings.Contains(trimmed, "internal "))
+		} else {
+			result.Symbols[i].Exported = boolPtr(false)
+		}
+	}
+}
+
+func markExportsPHP(result *SymbolResult, content string) {
+	lines := strings.Split(content, "\n")
+	for i := range result.Symbols {
+		line := result.Symbols[i].Line
+		if line > 0 && line <= len(lines) {
+			trimmed := strings.TrimSpace(lines[line-1])
+			result.Symbols[i].Exported = boolPtr(!strings.Contains(trimmed, "private "))
+		} else {
+			result.Symbols[i].Exported = boolPtr(true)
+		}
+	}
+}
+
+// FilterExported returns only symbols marked as exported.
+func FilterExported(results []SymbolResult) []SymbolResult {
+	filtered := make([]SymbolResult, len(results))
+	for i, r := range results {
+		filtered[i] = SymbolResult{File: r.File, Lines: r.Lines, Error: r.Error}
+		for _, s := range r.Symbols {
+			if s.Exported != nil && *s.Exported {
+				filtered[i].Symbols = append(filtered[i].Symbols, s)
+			}
+		}
+		if filtered[i].Symbols == nil {
+			filtered[i].Symbols = []Symbol{}
+		}
 	}
 	return filtered
 }

@@ -358,6 +358,149 @@ func TestExtractSymbolsParallel(t *testing.T) {
 	}
 }
 
+// Bug: C/C++ files fell through to extractSymbolsRust which misses functions.
+func TestExtractSymbolsC_FallbackExtractsFunctions(t *testing.T) {
+	content := `
+int add(int a, int b) { return a + b; }
+void reset(void) {}
+struct Point { int x; int y; };
+enum Color { RED, GREEN, BLUE };
+`
+	symbols := extractSymbolsC(content)
+	names := make(map[string]string)
+	for _, s := range symbols {
+		names[s.Name] = s.Kind
+	}
+	if names["add"] != "function" {
+		t.Errorf("add: got kind %q, want %q", names["add"], "function")
+	}
+	if names["reset"] != "function" {
+		t.Errorf("reset: got kind %q, want %q", names["reset"], "function")
+	}
+	if names["Point"] != "struct" {
+		t.Errorf("Point: got kind %q, want %q", names["Point"], "struct")
+	}
+	if names["Color"] != "enum" {
+		t.Errorf("Color: got kind %q, want %q", names["Color"], "enum")
+	}
+}
+
+func TestExtractSymbolsC_FallbackDoesNotProduceRustSymbols(t *testing.T) {
+	// Verify the C fallback is NOT using the Rust extractor.
+	// Rust patterns (fn, pub, trait, impl) should not produce matches on C code.
+	content := `
+struct Node { int val; };
+int process(int x) { return x * 2; }
+`
+	symbols := extractSymbolsC(content)
+	for _, s := range symbols {
+		if s.Kind == "impl" || s.Kind == "trait" {
+			t.Errorf("got Rust-specific kind %q for symbol %q in C code", s.Kind, s.Name)
+		}
+	}
+}
+
+// Bug: markExportsGo used name[0] (a byte) instead of the first rune,
+// causing Unicode uppercase identifiers like Ä to be missed as exported.
+func TestMarkExportsGoUnicode(t *testing.T) {
+	result := &SymbolResult{
+		File: "test.go",
+		Symbols: []Symbol{
+			{Name: "Ä", Kind: "function"}, // U+00C4, valid Go exported ident
+			{Name: "Normal", Kind: "function"},
+			{Name: "lower", Kind: "function"},
+		},
+	}
+	markExportsGo(result)
+
+	if result.Symbols[0].Exported == nil || !*result.Symbols[0].Exported {
+		t.Error("Ä should be exported (Unicode uppercase)")
+	}
+	if result.Symbols[1].Exported == nil || !*result.Symbols[1].Exported {
+		t.Error("Normal should be exported")
+	}
+	if result.Symbols[2].Exported == nil || *result.Symbols[2].Exported {
+		t.Error("lower should not be exported")
+	}
+}
+
+func TestMarkExportsTSCommonJSObjectExports(t *testing.T) {
+	content := `
+function deriveRouteDecision() {}
+function deriveRouteState() {}
+function internalHelper() {}
+
+module.exports = {
+  deriveRouteDecision,
+  routeState: deriveRouteState,
+};
+`
+	result := ExtractSymbolsWithOptions("route-decision.cjs", content, ExtractionOptions{})
+	MarkExports(&result, content)
+	exported := FilterExported([]SymbolResult{result})[0].Symbols
+
+	names := make(map[string]bool)
+	for _, s := range exported {
+		names[symbolBaseName(s.Name)] = true
+	}
+
+	for _, want := range []string{"deriveRouteDecision", "deriveRouteState"} {
+		if !names[want] {
+			t.Errorf("expected CommonJS export %q in %+v", want, exported)
+		}
+	}
+	if names["internalHelper"] {
+		t.Errorf("internalHelper should not be exported: %+v", exported)
+	}
+}
+
+func TestMarkExportsTSCommonJSNamedAndDefaultExports(t *testing.T) {
+	content := `
+function runTicketWorkflow() {}
+function buildTicketOutput() {}
+function privateHelper() {}
+
+exports.buildTicketOutput = buildTicketOutput;
+module.exports.runTicketWorkflow = runTicketWorkflow;
+`
+	result := ExtractSymbolsWithOptions("ticket-output.cjs", content, ExtractionOptions{})
+	MarkExports(&result, content)
+	exported := FilterExported([]SymbolResult{result})[0].Symbols
+
+	names := make(map[string]bool)
+	for _, s := range exported {
+		names[symbolBaseName(s.Name)] = true
+	}
+
+	for _, want := range []string{"buildTicketOutput", "runTicketWorkflow"} {
+		if !names[want] {
+			t.Errorf("expected CommonJS named export %q in %+v", want, exported)
+		}
+	}
+	if names["privateHelper"] {
+		t.Errorf("privateHelper should not be exported: %+v", exported)
+	}
+
+	defaultContent := `
+function main() {}
+function helper() {}
+module.exports = main;
+`
+	defaultResult := ExtractSymbolsWithOptions("main.cjs", defaultContent, ExtractionOptions{})
+	MarkExports(&defaultResult, defaultContent)
+	defaultExported := FilterExported([]SymbolResult{defaultResult})[0].Symbols
+	defaultNames := make(map[string]bool)
+	for _, s := range defaultExported {
+		defaultNames[symbolBaseName(s.Name)] = true
+	}
+	if !defaultNames["main"] {
+		t.Errorf("expected CommonJS default export main in %+v", defaultExported)
+	}
+	if defaultNames["helper"] {
+		t.Errorf("helper should not be exported: %+v", defaultExported)
+	}
+}
+
 func TestExtractSymbolsWithRangesOptIn(t *testing.T) {
 	content := "func main() {}\n"
 

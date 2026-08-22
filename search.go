@@ -47,8 +47,11 @@ func SearchSymbolsWithKindsAndOptions(root string, files []string, query string,
 		}
 
 		for _, sym := range r.Symbols {
-			if len(kindSet) > 0 && !kindSet[normalizeKind(sym.Kind)] {
-				continue
+			if len(kindSet) > 0 {
+				norm := normalizeKind(sym.Kind)
+				if !kindSet[norm] && !kindSet[baseKind(norm)] {
+					continue
+				}
 			}
 
 			// Strip params from name for matching (e.g. "foo(bar, baz)" → "foo")
