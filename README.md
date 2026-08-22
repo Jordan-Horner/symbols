@@ -4,6 +4,8 @@ A fast, polyglot source code intelligence CLI. Extract symbols, parse imports, t
 
 No language server required. No build step for your projects. Just point it at your code.
 
+`symbols` is stateless and index-free: every command reads the working tree as it exists now. It is designed for exact structural checks in local workflows, automation, and CI—not as a persistent semantic knowledge graph.
+
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCPAmpel](https://img.shields.io/endpoint?url=https://mcpampel.com/badge/Jordan-Horner/symbols.json)](https://mcpampel.com/repo/Jordan-Horner/symbols)
@@ -25,6 +27,7 @@ No language server required. No build step for your projects. Just point it at y
   - [Dependency queries](#dependency-queries)
   - [Impact analysis](#impact-analysis)
   - [Project graph summary](#project-graph-summary)
+  - [Symbol edges](#symbol-edges)
   - [JSON output](#json-output)
   - [Shorthand](#shorthand)
   - [Symbol search](#symbol-search)
@@ -72,6 +75,9 @@ syms dependents server.py     # files that import this file
 syms impact server.py         # full impact analysis (direct + transitive)
 syms graph .                  # project-wide dependency summary
 syms search User              # find symbols by name across a project
+syms refs UserService         # definition + reference edges for a symbol
+syms exports src/             # public/exported symbols only
+syms changed                  # file-level impact of the current git diff
 syms mcp                      # run as MCP server for AI tools
 ```
 
@@ -176,6 +182,28 @@ syms list --filter class --filter function src/
   def shutdown(self)  # line 78
 ```
 
+**JSON ranges output (opt-in with `--ranges`):**
+
+```json
+[
+  {
+    "file": "/path/to/app.py",
+    "lines": 245,
+    "symbols": [
+      {
+        "name": "Application",
+        "kind": "class",
+        "line": 12,
+        "start_line": 12,
+        "end_line": 80,
+        "start_col": 1,
+        "end_col": 2
+      }
+    ]
+  }
+]
+```
+
 ### Import parsing
 
 ```sh
@@ -263,6 +291,22 @@ Project dependency graph
     src/config.py <-> src/runner.py
 ```
 
+### Symbol edges
+
+```sh
+# Find definition + reference edges for a symbol
+syms refs UserService
+
+# JSON output
+syms refs --json UserService
+
+# Include definition lines in references list
+syms refs --json --include-definitions UserService
+
+# Include range metadata on definitions
+syms refs --json --ranges UserService
+```
+
 ### JSON output
 
 All commands support `--json` for machine-readable output:
@@ -341,10 +385,13 @@ Exposes all functionality as MCP tools over stdio (JSON-RPC 2.0):
 | `syms_dependents` | Reverse dependencies |
 | `syms_impact` | Impact analysis |
 | `syms_search` | Search symbols by name |
+| `syms_refs` | Definition + reference edges for a symbol |
 | `syms_graph` | Project dependency graph |
+| `syms_exports` | Public/exported symbols |
+| `syms_changed` | File-level impact of current git changes |
 
 `syms_list` and `syms_search` accept optional `kinds: string[]` arguments to filter symbol kinds.
-`syms_list` and `syms_search` also accept optional `include_ranges: boolean` for start/end line+column metadata.
+`syms_list` and `syms_search` also accept optional `include_ranges: boolean` for start/end line+column metadata (off by default).
 Tool results are returned in `structuredContent` (not JSON text blobs in `content[].text`).
 
 ### Claude Code setup
@@ -415,7 +462,7 @@ syms deps src/app.py --root /path/to/project
 ## Limitations
 
 - **Convention-based resolution** — dependency resolution uses file path conventions, not compiler/build system integration. TypeScript/JavaScript `paths` from `tsconfig.json`/`jsconfig.json` are supported (including `extends`), but webpack/vite aliases defined outside tsconfig are not.
-- **File-level granularity** — dependencies are traced at the file level (import graph), not at the function or symbol level. There is no call graph.
+- **File-level granularity** — dependencies and impact are intentionally traced at the file level (import graph), not through a semantic call graph. Symbol references are textual whole-word matches.
 - **C/C++ includes** — `#include` parsing and header resolution are not yet implemented. Symbol extraction works, but dependency tracing does not.
 - **Ruby/Scala/Bash** — symbol extraction works via tree-sitter, but import parsing and dependency resolution are not implemented.
 - **Dynamic imports** — Python's `importlib.import_module()`, JavaScript's computed `require()`, and similar dynamic patterns are not detected.

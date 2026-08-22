@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -199,6 +200,29 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "syms_refs",
+			Description: "Definition and reference edges for a symbol across a project",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol name to resolve",
+					},
+					"root": rootProp,
+					"include_ranges": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Include definition range metadata (start/end line/column)",
+					},
+					"include_definitions": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Include definition lines in references list",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
 			Name:        "syms_graph",
 			Description: "Project-wide dependency graph summary with hot spots, heaviest importers, and circular dependencies",
 			InputSchema: map[string]interface{}{
@@ -209,6 +233,39 @@ func mcpTools() []mcpTool {
 						"description": "Project root directory",
 					},
 				},
+			},
+		},
+		{
+			Name:        "syms_changed",
+			Description: "Impact analysis for uncommitted git changes — which files are affected by your current diff",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"root":   rootProp,
+					"staged": map[string]interface{}{"type": "boolean", "description": "Only staged changes (git diff --cached)"},
+					"ref":    map[string]interface{}{"type": "string", "description": "Diff against a specific ref (e.g. main, HEAD~3)"},
+				},
+			},
+		},
+		{
+			Name:        "syms_exports",
+			Description: "Show public API surface — only exported/public symbols from source files",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"paths":     pathsProp,
+					"recursive": map[string]interface{}{"type": "boolean", "description": "Scan directories recursively"},
+					"kinds": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Optional symbol kind filter (e.g. class, function, constant)",
+					},
+					"include_ranges": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Include symbol range metadata (start/end line/column)",
+					},
+				},
+				"required": []string{"paths"},
 			},
 		},
 	}
@@ -230,6 +287,12 @@ func handleToolCall(name string, args json.RawMessage) mcpToolResult {
 		return handleImpact(args)
 	case "syms_search":
 		return handleSearch(args)
+	case "syms_refs":
+		return handleRefs(args)
+	case "syms_changed":
+		return handleChanged(args)
+	case "syms_exports":
+		return handleExports(args)
 	case "syms_graph":
 		return handleGraph(args)
 	default:
@@ -257,6 +320,28 @@ func handleList(args json.RawMessage) mcpToolResult {
 	}
 	results := filterSymbolResultsByKind(
 		ExtractSymbolsParallelWithOptions(files, ExtractionOptions{IncludeRanges: p.IncludeRanges}),
+		p.Kinds,
+	)
+	return jsonResult(results)
+}
+
+func handleExports(args json.RawMessage) mcpToolResult {
+	var p struct {
+		Paths         []string `json:"paths"`
+		Recursive     bool     `json:"recursive"`
+		Kinds         []string `json:"kinds"`
+		IncludeRanges bool     `json:"include_ranges"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return errResult("invalid arguments: " + err.Error())
+	}
+
+	files := collectFiles(p.Paths, p.Recursive)
+	if len(files) == 0 {
+		return textResult("No supported files found.")
+	}
+	results := filterSymbolResultsByKind(
+		FilterExported(ExtractSymbolsParallelWithExports(files, ExtractionOptions{IncludeRanges: p.IncludeRanges})),
 		p.Kinds,
 	)
 	return jsonResult(results)
@@ -370,6 +455,116 @@ func handleSearch(args json.RawMessage) mcpToolResult {
 	return jsonResult(results)
 }
 
+func handleRefs(args json.RawMessage) mcpToolResult {
+	var p struct {
+		Query              string `json:"query"`
+		Root               string `json:"root"`
+		IncludeRanges      bool   `json:"include_ranges"`
+		IncludeDefinitions bool   `json:"include_definitions"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return errResult("invalid arguments: " + err.Error())
+	}
+	root := p.Root
+	if root == "" {
+		root = "."
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return errResult("invalid root: " + err.Error())
+	}
+	files := collectFiles([]string{absRoot}, true)
+	result := FindSymbolEdges(absRoot, files, p.Query, ExtractionOptions{IncludeRanges: p.IncludeRanges}, p.IncludeDefinitions)
+	return jsonResult(result)
+}
+
+func handleChanged(args json.RawMessage) mcpToolResult {
+	var p struct {
+		Root   string `json:"root"`
+		Staged bool   `json:"staged"`
+		Ref    string `json:"ref"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return errResult("invalid arguments: " + err.Error())
+	}
+
+	root := p.Root
+	if root == "" {
+		root = "."
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return errResult("invalid root: " + err.Error())
+	}
+
+	gitArgs := []string{"diff", "--name-only"}
+	if p.Staged {
+		gitArgs = append(gitArgs, "--cached")
+	}
+	if p.Ref != "" {
+		gitArgs = append(gitArgs, p.Ref)
+	}
+
+	cmd := exec.Command("git", gitArgs...)
+	cmd.Dir = absRoot
+	out, gitErr := cmd.Output()
+	if gitErr != nil {
+		return errResult("git diff failed: " + gitErr.Error())
+	}
+
+	var changedFiles []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		abs := filepath.Join(absRoot, line)
+		ext := strings.ToLower(filepath.Ext(abs))
+		if sourceExts[ext] {
+			changedFiles = append(changedFiles, abs)
+		}
+	}
+
+	if len(changedFiles) == 0 {
+		return jsonResult(map[string]interface{}{
+			"changed_files": []string{},
+			"total_impact":  0,
+			"impacts":       []ImpactResult{},
+		})
+	}
+
+	files := collectFiles([]string{absRoot}, true)
+	graph := BuildGraph(absRoot, files)
+
+	allImpacted := make(map[string]bool)
+	var impacts []ImpactResult
+	for _, f := range changedFiles {
+		impact := graph.Impact(f)
+		impacts = append(impacts, impact)
+		for _, d := range impact.Direct {
+			allImpacted[d] = true
+		}
+		for _, d := range impact.Indirect {
+			allImpacted[d] = true
+		}
+	}
+
+	relChanged := make([]string, len(changedFiles))
+	for i, f := range changedFiles {
+		if r, err := filepath.Rel(absRoot, f); err == nil {
+			relChanged[i] = filepath.ToSlash(r)
+		} else {
+			relChanged[i] = f
+		}
+	}
+
+	return jsonResult(map[string]interface{}{
+		"changed_files": relChanged,
+		"total_impact":  len(allImpacted),
+		"impacts":       impacts,
+	})
+}
+
 func handleGraph(args json.RawMessage) mcpToolResult {
 	var p struct {
 		Root string `json:"root"`
@@ -411,7 +606,30 @@ func errResult(text string) mcpToolResult {
 }
 
 func jsonResult(v interface{}) mcpToolResult {
-	return mcpToolResult{StructuredContent: v}
+	// MCP requires structuredContent to be a record/object, not an array.
+	// Wrap slices in {"items": [...]} to satisfy the protocol.
+	structured := v
+	if isSlice(v) {
+		structured = map[string]interface{}{"items": v}
+	}
+	return mcpToolResult{StructuredContent: structured}
+}
+
+func isSlice(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	switch v.(type) {
+	case []interface{}:
+		return true
+	default:
+		// Use reflect-free approach: marshal and check first byte
+		data, err := json.Marshal(v)
+		if err != nil {
+			return false
+		}
+		return len(data) > 0 && data[0] == '['
+	}
 }
 
 // ── Server loop ─────────────────────────────────────────────────────────────

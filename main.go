@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -459,6 +460,189 @@ func cmdSearch(args []string) {
 	}
 }
 
+func cmdRefs(args []string) {
+	fs := flag.NewFlagSet("refs", flag.ExitOnError)
+	root := fs.String("root", "", "Project root (auto-detected if omitted)")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
+	ranges := fs.Bool("ranges", false, "Include symbol range metadata on definitions")
+	includeDefinitions := fs.Bool("include-definitions", false, "Include definition lines in reference matches")
+	positional := parseFlags(args, fs)
+
+	if len(positional) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: syms refs [--root DIR] [--json] [--pretty] [--ranges] [--include-definitions] <symbol>")
+		os.Exit(1)
+	}
+	query := positional[0]
+
+	searchRoot := *root
+	if searchRoot == "" {
+		searchRoot = findProjectRoot(".")
+	}
+	files := collectFiles([]string{searchRoot}, true)
+	result := FindSymbolEdges(searchRoot, files, query, ExtractionOptions{IncludeRanges: *ranges}, *includeDefinitions)
+
+	if *jsonOut {
+		printJSON(result, *pretty)
+	} else {
+		fmt.Print(FormatSymbolEdgesText(result))
+	}
+}
+
+func cmdExports(args []string) {
+	fs := flag.NewFlagSet("exports", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "syms exports - Show public API surface (exported symbols only)")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: syms exports [-r] [--json] [--pretty] [--ranges] [--filter KIND[,KIND...]] <paths...>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
+	recursive := fs.Bool("r", false, "Recursive directory scan")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
+	ranges := fs.Bool("ranges", false, "Include symbol range metadata (start/end line/column)")
+	var filters stringListFlag
+	fs.Var(&filters, "filter", "Filter symbols by kind (repeatable or comma-separated)")
+	paths := parseFlags(args, fs)
+	if len(paths) == 0 {
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	files := collectFiles(paths, *recursive)
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "No supported files found.")
+		os.Exit(1)
+	}
+
+	results := ExtractSymbolsParallelWithExports(files, ExtractionOptions{IncludeRanges: *ranges})
+	results = FilterExported(results)
+	results = filterSymbolResultsByKind(results, []string(filters))
+
+	if *jsonOut {
+		printJSON(results, *pretty)
+	} else {
+		for _, r := range results {
+			fmt.Println(FormatSymbolResult(r))
+		}
+	}
+}
+
+func cmdChanged(args []string) {
+	fs := flag.NewFlagSet("changed", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "syms changed - Impact analysis for uncommitted or staged changes")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Usage: syms changed [--staged] [--ref REF] [--root DIR] [--json] [--pretty]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fs.PrintDefaults()
+	}
+	staged := fs.Bool("staged", false, "Only staged changes (git diff --cached)")
+	ref := fs.String("ref", "", "Diff against a specific ref (e.g. main, HEAD~3)")
+	root := fs.String("root", "", "Project root (auto-detected if omitted)")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output (with --json)")
+	parseFlags(args, fs)
+
+	changedRoot := *root
+	if changedRoot == "" {
+		changedRoot = findProjectRoot(".")
+	}
+
+	// Build git diff command
+	gitArgs := []string{"diff", "--name-only"}
+	if *staged {
+		gitArgs = append(gitArgs, "--cached")
+	}
+	if *ref != "" {
+		gitArgs = append(gitArgs, *ref)
+	}
+
+	cmd := exec.Command("git", gitArgs...)
+	cmd.Dir = changedRoot
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "git diff failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	var changedFiles []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		abs := filepath.Join(changedRoot, line)
+		ext := strings.ToLower(filepath.Ext(abs))
+		if sourceExts[ext] {
+			changedFiles = append(changedFiles, abs)
+		}
+	}
+
+	if len(changedFiles) == 0 {
+		if *jsonOut {
+			printJSON(map[string]interface{}{
+				"changed_files": []string{},
+				"total_impact":  0,
+				"impacts":       []ImpactResult{},
+			}, *pretty)
+		} else {
+			fmt.Println("No changed source files.")
+		}
+		return
+	}
+
+	// Build graph and compute impact for each changed file
+	files := collectFiles([]string{changedRoot}, true)
+	graph := BuildGraph(changedRoot, files)
+
+	// Deduplicate: collect all impacted files across all changed files
+	allImpacted := make(map[string]bool)
+	var impacts []ImpactResult
+	for _, f := range changedFiles {
+		impact := graph.Impact(f)
+		impacts = append(impacts, impact)
+		for _, d := range impact.Direct {
+			allImpacted[d] = true
+		}
+		for _, d := range impact.Indirect {
+			allImpacted[d] = true
+		}
+	}
+
+	relChanged := make([]string, len(changedFiles))
+	for i, f := range changedFiles {
+		if r, err := filepath.Rel(changedRoot, f); err == nil {
+			relChanged[i] = filepath.ToSlash(r)
+		} else {
+			relChanged[i] = f
+		}
+	}
+
+	if *jsonOut {
+		printJSON(map[string]interface{}{
+			"changed_files": relChanged,
+			"total_impact":  len(allImpacted),
+			"impacts":       impacts,
+		}, *pretty)
+	} else {
+		fmt.Printf("Changed source files: %d\n", len(changedFiles))
+		for _, f := range relChanged {
+			fmt.Printf("  %s\n", f)
+		}
+		fmt.Printf("\nTotal blast radius: %d files\n", len(allImpacted))
+		for _, impact := range impacts {
+			if impact.DirectDependents > 0 || impact.TransitiveDependents > 0 {
+				fmt.Printf("\n")
+				fmt.Print(FormatImpactText(impact))
+			}
+		}
+	}
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 var version = "1.0.3"
@@ -466,7 +650,8 @@ var version = "1.0.3"
 var subcommands = map[string]bool{
 	"list": true, "imports": true, "deps": true,
 	"dependents": true, "impact": true, "graph": true,
-	"search": true, "mcp": true,
+	"search": true, "refs": true, "exports": true,
+	"changed": true, "mcp": true,
 }
 
 func main() {
@@ -493,6 +678,9 @@ func main() {
 		fmt.Println("  impact       Impact analysis for a file")
 		fmt.Println("  graph        Project-wide dependency graph summary")
 		fmt.Println("  search       Search for symbols by name across a project")
+		fmt.Println("  refs         Definition and reference edges for a symbol")
+		fmt.Println("  exports      Show public API surface (exported symbols only)")
+		fmt.Println("  changed      Impact analysis for uncommitted changes")
 		fmt.Println("  mcp          Run as MCP server (stdio)")
 
 		os.Exit(1)
@@ -528,6 +716,12 @@ func main() {
 		cmdGraph(rest)
 	case "search":
 		cmdSearch(rest)
+	case "refs":
+		cmdRefs(rest)
+	case "exports":
+		cmdExports(rest)
+	case "changed":
+		cmdChanged(rest)
 	case "mcp":
 		runMCP()
 	default:

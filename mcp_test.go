@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +21,16 @@ func decodeStructured(t *testing.T, result mcpToolResult, out interface{}) {
 	if err != nil {
 		t.Fatalf("failed to marshal structuredContent: %v", err)
 	}
+	// jsonResult() wraps slices in {"items": [...]} for MCP protocol compliance.
+	// Unwrap before decoding into the target type.
+	var wrapper map[string]json.RawMessage
+	if json.Unmarshal(data, &wrapper) == nil {
+		if items, ok := wrapper["items"]; ok {
+			if json.Unmarshal(items, out) == nil {
+				return
+			}
+		}
+	}
 	if err := json.Unmarshal(data, out); err != nil {
 		t.Fatalf("failed to decode structuredContent: %v", err)
 	}
@@ -27,8 +38,20 @@ func decodeStructured(t *testing.T, result mcpToolResult, out interface{}) {
 
 func TestMCPTools(t *testing.T) {
 	tools := mcpTools()
-	if len(tools) != 7 {
-		t.Fatalf("expected 7 tools, got %d", len(tools))
+	expectedTools := []string{
+		"syms_list",
+		"syms_imports",
+		"syms_deps",
+		"syms_dependents",
+		"syms_impact",
+		"syms_search",
+		"syms_refs",
+		"syms_graph",
+		"syms_exports",
+		"syms_changed",
+	}
+	if len(tools) != len(expectedTools) {
+		t.Fatalf("expected %d tools, got %d", len(expectedTools), len(tools))
 	}
 
 	names := make(map[string]bool)
@@ -42,7 +65,7 @@ func TestMCPTools(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"syms_list", "syms_imports", "syms_deps", "syms_dependents", "syms_impact", "syms_search", "syms_graph"} {
+	for _, want := range expectedTools {
 		if !names[want] {
 			t.Errorf("missing tool %s", want)
 		}
@@ -173,6 +196,30 @@ func TestHandleGraph(t *testing.T) {
 	}
 }
 
+func TestHandleExports(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "test.py")
+	os.WriteFile(f, []byte("def _private(): pass\ndef public(): pass\n"), 0644)
+
+	args, _ := json.Marshal(map[string]interface{}{"paths": []string{f}})
+	result := handleToolCall("syms_exports", args)
+
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	var results []SymbolResult
+	decodeStructured(t, result, &results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 file result, got %d", len(results))
+	}
+	for _, s := range results[0].Symbols {
+		if s.Exported == nil || !*s.Exported {
+			t.Errorf("symbol %q should be exported", s.Name)
+		}
+	}
+}
+
 func TestHandleUnknownTool(t *testing.T) {
 	result := handleToolCall("nonexistent", nil)
 	if !result.IsError {
@@ -264,6 +311,30 @@ func TestHandleSearchKindFilter(t *testing.T) {
 	}
 }
 
+func TestHandleRefs(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.py"), []byte("def foo(x):\n    return x\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "b.py"), []byte("from a import foo\nfoo(1)\n"), 0644)
+
+	args, _ := json.Marshal(map[string]interface{}{
+		"query": "foo",
+		"root":  dir,
+	})
+	result := handleToolCall("syms_refs", args)
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	var parsed SymbolEdgesResult
+	decodeStructured(t, result, &parsed)
+	if len(parsed.Definitions) == 0 {
+		t.Fatal("expected definitions")
+	}
+	if len(parsed.References) == 0 {
+		t.Fatal("expected references")
+	}
+}
+
 func TestHandleListIncludeRanges(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "test.go")
@@ -286,6 +357,52 @@ func TestHandleListIncludeRanges(t *testing.T) {
 	s := results[0].Symbols[0]
 	if s.StartLine == nil || s.EndLine == nil || s.StartCol == nil || s.EndCol == nil {
 		t.Fatalf("expected range fields in symbol, got %+v", s)
+	}
+}
+
+func TestHandleChanged(t *testing.T) {
+	dir := t.TempDir()
+
+	// Requires a real git repo
+	if err := exec.Command("git", "-C", dir, "init").Run(); err != nil {
+		t.Skip("git not available")
+	}
+	exec.Command("git", "-C", dir, "config", "user.email", "test@test.com").Run()
+	exec.Command("git", "-C", dir, "config", "user.name", "Test").Run()
+
+	// Commit initial state
+	os.WriteFile(filepath.Join(dir, "a.py"), []byte("import b\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "b.py"), []byte("def foo(): pass\n"), 0644)
+	exec.Command("git", "-C", dir, "add", ".").Run()
+	exec.Command("git", "-C", dir, "commit", "-m", "init").Run()
+
+	// Modify a tracked file so it shows in git diff
+	os.WriteFile(filepath.Join(dir, "b.py"), []byte("def foo(): pass\ndef bar(): pass\n"), 0644)
+
+	args, _ := json.Marshal(map[string]interface{}{"root": dir})
+	result := handleToolCall("syms_changed", args)
+
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	var parsed map[string]interface{}
+	decodeStructured(t, result, &parsed)
+	if parsed["changed_files"] == nil {
+		t.Error("result missing 'changed_files'")
+	}
+	if parsed["total_impact"] == nil {
+		t.Error("result missing 'total_impact'")
+	}
+}
+
+func TestHandleChangedNoGit(t *testing.T) {
+	// Non-git directory should return an error, not panic
+	dir := t.TempDir()
+	args, _ := json.Marshal(map[string]interface{}{"root": dir})
+	result := handleToolCall("syms_changed", args)
+	if !result.IsError {
+		t.Error("expected error for non-git directory")
 	}
 }
 
